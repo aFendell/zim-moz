@@ -1,0 +1,80 @@
+[
+  {
+    "id": "harare",
+    "type": "stop",
+    "name": "Harare",
+    "lat": -17.8292,
+    "lng": 31.0522,
+    "description": "Start and end of the loop.",
+    "notes": ""
+  },
+  {
+    "id": "chipinda-pools",
+    "type": "stop",
+    "name": "Chipinda Pools",
+    "lat": -21.2888,
+    "lng": 31.9141,
+    "description": "Gonarezhou National Park, northern section. Campsite on the Runde River near the park HQ.",
+    "notes": ""
+  },
+  {
+    "id": "swimuwini",
+    "type": "stop",
+    "name": "Swimuwini Chalets / Mabalauta",
+    "lat": -21.9301,
+    "lng": 31.4883,
+    "description": "Gonarezhou southern section. Rest camp with thatched chalets overlooking the Mwenezi River, 8 km from the Mabalauta warden's office.",
+    "notes": ""
+  },
+  {
+    "id": "sango-border",
+    "type": "border",
+    "name": "Sango / Chicualacuala border",
+    "lat": -22.0677,
+    "lng": 31.6801,
+    "description": "Zimbabwe (Sango) to Mozambique (Chicualacuala) crossing, south-east of Gonarezhou.",
+    "notes": "",
+    "documents": "",
+    "fees": "",
+    "hours": ""
+  },
+  {
+    "id": "tofo",
+    "type": "stop",
+    "name": "Tofo Beach",
+    "lat": -23.8536,
+    "lng": 35.5472,
+    "description": "Praia do Tofo, Inhambane. Beach, diving, whale sharks.",
+    "notes": ""
+  },
+  {
+    "id": "chimoio",
+    "type": "stop",
+    "name": "Chimoio",
+    "lat": -19.1437,
+    "lng": 33.478,
+    "description": "Capital of Manica province. Last stop before the Zimbabwe border.",
+    "notes": ""
+  },
+  {
+    "id": "machipanda-border",
+    "type": "border",
+    "name": "Machipanda / Forbes border",
+    "lat": -19.0053,
+    "lng": 32.7124,
+    "description": "Mozambique (Machipanda) to Zimbabwe (Forbes, Mutare) crossing on the Beira corridor.",
+    "notes": "",
+    "documents": "",
+    "fees": "",
+    "hours": ""
+  },
+  {
+    "id": "harare-end",
+    "type": "stop",
+    "name": "Harare",
+    "lat": -17.8292,
+    "lng": 31.0522,
+    "description": "Home.",
+    "notes": ""
+  }
+]
