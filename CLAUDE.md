@@ -46,6 +46,7 @@ Run `yarn typecheck` and `yarn lint` before committing.
 ## Git / deploy
 - Local-only for now. No remote configured.
 - GitHub account for this repo: personal `aFendell` (https://github.com/aFendell), NOT the work account. Repo-local identity already set: `user.name=aFendell`, `user.email=78854935+aFendell@users.noreply.github.com`. Never commit here with the work email.
+- `gh` CLI: global active account stays the WORK account (`assaf-upstream`). Never run `gh auth switch`. For this project prefix every gh command: `GH_TOKEN=$(gh auth token --user aFendell) gh ...`.
 - SSH: key `~/.ssh/id_ed25519_afendell` + host alias `github-personal` in `~/.ssh/config` already set. Remote must be `git@github-personal:aFendell/zim-moz.git` (NOT `github.com`, that hits the work key). Public repo required for free Pages.
 - Commit per stage: `setup`, `base` (map + route), `data` (cards/legs), `edit`, `offline`, etc. One commit per stage, prefix message with stage name.
 - Deploy details in PRD "Deployment" section. Basemap PMTiles goes to a GitHub Release asset, never into git.
