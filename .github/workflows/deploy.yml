@@ -28,9 +28,12 @@ jobs:
       - run: yarn lint
       - run: yarn test
       - run: yarn build
-        env:
-          # Set repo variable BASEMAP_URL to the GitHub Release asset URL once uploaded.
-          VITE_BASEMAP_URL: ${{ vars.BASEMAP_URL }}
+      # Basemap is served same-origin from Pages (release URLs redirect without CORS headers).
+      # Repo variable BASEMAP_URL points at the Release asset; it is copied into dist/ here.
+      - name: Fetch basemap into dist
+        run: |
+          curl -fsSL -o dist/zim-moz.pmtiles "${{ vars.BASEMAP_URL }}"
+          ls -lh dist/zim-moz.pmtiles
       - uses: actions/upload-pages-artifact@v3
         with:
           path: dist

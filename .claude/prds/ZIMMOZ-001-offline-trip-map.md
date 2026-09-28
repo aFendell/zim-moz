@@ -50,7 +50,7 @@ A single static web app (PWA) opened from a link. On first load with wifi it cac
 ### Delivery
 - Static PWA, no backend, no login. Hosted on any static host (GitHub Pages, Netlify, Cloudflare Pages).
 - Service worker via Workbox (vite-plugin-pwa). App shell, seed data, generated legs, glyphs, sprites, seed images precached. Basemap file is not precached; it is fetched in full on explicit user action and stored in the Cache API under a versioned key. A custom PMTiles `Source` serves byte ranges from that cached blob when present and falls back to HTTP Range requests otherwise, so no service-worker range handling is needed and the map works even before the service worker controls the page.
-- Basemap URL is a build-time constant (`VITE_BASEMAP_URL`); in dev it is served from `public/`. Cross-origin hosting (GitHub Release asset) works because the file is fetched with CORS and cached client-side.
+- Basemap URL defaults to `<base>/zim-moz.pmtiles`, same-origin in both dev (`public/`) and production (copied into `dist/` by the workflow). `VITE_BASEMAP_URL` can override it for a CORS-enabled host.
 - In-app banner on iOS Safari (not standalone) recommending Add to Home Screen.
 - Offline readiness indicator derived from Cache API, not app state.
 
@@ -99,7 +99,7 @@ A single static web app (PWA) opened from a link. On first load with wifi it cac
 ### Deployment
 - Repo: public GitHub repo. Pages and Release assets are free only for public repos.
 - App: GitHub Pages, deployed by GitHub Actions on push to `main`. Vite `base` set to `/<repo-name>/`.
-- Basemap: single PMTiles file uploaded as a GitHub Release asset (2 GB per-file limit, range requests and CORS supported). App fetches it from the release download URL; the URL is a build-time constant.
+- Basemap: single PMTiles file uploaded as a GitHub Release asset (storage only; the release download URL redirects without CORS headers, so browsers cannot fetch it cross-origin). The deploy workflow downloads the asset into `dist/` so it is served same-origin from Pages, which supports range requests. Pages per-file limit is 100 MB; keep the extract under that.
 - Not deployed from the development machine. All deploy steps run in GitHub Actions or the GitHub UI.
 
 #### One-time setup
@@ -108,7 +108,7 @@ A single static web app (PWA) opened from a link. On first load with wifi it cac
 3. Add workflow `.github/workflows/deploy.yml`: on push to `main`, checkout, setup Node, install, `yarn test`, `yarn build`, upload `dist` with `actions/upload-pages-artifact`, deploy with `actions/deploy-pages`. Needs `permissions: pages: write, id-token: write`.
 4. Generate basemap locally once (`yarn tiles`, see below). Do not commit it; it is gitignored.
 5. Create a Release (e.g. tag `basemap-v1`) in GitHub UI or `gh release create`, attach the PMTiles file as asset.
-6. Set the asset download URL (`https://github.com/<owner>/<repo>/releases/download/basemap-v1/<file>.pmtiles`) as `VITE_BASEMAP_URL` in the deploy workflow's build step (or a repo variable). Commit, push, Actions deploys.
+6. Set repo variable `BASEMAP_URL` to the asset download URL (`https://github.com/<owner>/<repo>/releases/download/basemap-v1/<file>.pmtiles`). The workflow curls it into `dist/` on every deploy. Commit, push, Actions deploys.
 7. Share `https://<owner>.github.io/<repo>/` on WhatsApp.
 
 #### Routine updates
