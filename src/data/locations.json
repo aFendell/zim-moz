@@ -12,10 +12,15 @@
     "id": "chipinda-pools",
     "type": "stop",
     "name": "Chipinda Pools",
-    "lat": -21.2888,
-    "lng": 31.9141,
+    "lat": -21.2742,
+    "lng": 31.9108,
     "description": "Gonarezhou National Park, northern section. Campsite on the Runde River near the park HQ.",
-    "notes": ""
+    "notes": "",
+    "via": [
+      [30.832, -20.0744],
+      [31.6739, -21.05]
+    ],
+    "routeExit": [31.9046, -21.285]
   },
   {
     "id": "swimuwini",

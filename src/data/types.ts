@@ -14,8 +14,13 @@ export interface Location {
   documents?: string;
   fees?: string;
   hours?: string;
-  /** Optional waypoints to steer the router on the leg *arriving* at this location. */
+  /** Optional waypoints ([lng, lat]) to steer the router on the leg *arriving* at this location. */
   via?: [number, number][];
+  /**
+   * Optional [lng, lat] where routing for the *departing* leg starts, for pins whose own
+   * road is disconnected in OSM (park gates, causeways). A straight stub joins pin -> exit.
+   */
+  routeExit?: [number, number];
 }
 
 /** Fields a member may override locally. */
