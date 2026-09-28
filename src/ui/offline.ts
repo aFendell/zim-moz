@@ -6,16 +6,24 @@ import {
   type BasemapCacheState,
 } from '../data/basemapCache';
 
-type UiState =
+export interface OfflineFile {
+  id: string;
+  label: string;
+  url: string;
+  version: number;
+  sizeHintMB: number;
+  /** Required files drive the chip status; optional ones (terrain) do not. */
+  required: boolean;
+}
+
+type FileState =
   | { kind: 'unknown' }
   | BasemapCacheState
   | { kind: 'downloading'; received: number; total: number | null };
 
 export interface OfflineOptions {
-  url: string;
-  version: number;
   parent: HTMLElement;
-  sizeHintMB: number;
+  files: OfflineFile[];
 }
 
 function fmtMB(bytes: number): string {
@@ -28,7 +36,7 @@ function isIosBrowserTab(): boolean {
   return ios && !standalone;
 }
 
-/** Status chip + expandable panel with the download button and iOS install hint. */
+/** Status chip + panel listing each offline file with its own download/delete. */
 export function mountOfflinePanel(opts: OfflineOptions): void {
   const wrap = document.createElement('div');
   wrap.className = 'offline';
@@ -41,86 +49,116 @@ export function mountOfflinePanel(opts: OfflineOptions): void {
   wrap.append(chip, panel);
   opts.parent.appendChild(wrap);
 
-  let state: UiState = { kind: 'unknown' };
-  let busy = false;
+  const states = new Map<string, FileState>(opts.files.map((f) => [f.id, { kind: 'unknown' }]));
+  const busy = new Set<string>();
 
   const refresh = async () => {
-    if (busy) return;
-    state = await getBasemapCacheState(opts.url, opts.version);
+    await Promise.all(
+      opts.files.map(async (f) => {
+        if (busy.has(f.id)) return;
+        states.set(f.id, await getBasemapCacheState(f.url, f.version));
+      }),
+    );
     render();
   };
 
-  const start = async () => {
-    if (busy) return;
-    busy = true;
-    state = { kind: 'downloading', received: 0, total: null };
+  const start = async (f: OfflineFile) => {
+    if (busy.has(f.id)) return;
+    busy.add(f.id);
+    states.set(f.id, { kind: 'downloading', received: 0, total: null });
     render();
     try {
-      const bytes = await downloadBasemap(opts.url, opts.version, (received, total) => {
-        state = { kind: 'downloading', received, total };
+      const bytes = await downloadBasemap(f.url, f.version, (received, total) => {
+        states.set(f.id, { kind: 'downloading', received, total });
         render();
       });
-      state = { kind: 'ready', bytes };
+      states.set(f.id, { kind: 'ready', bytes });
     } catch (e) {
-      state = { kind: 'error', message: e instanceof Error ? e.message : 'Download failed' };
+      states.set(f.id, { kind: 'error', message: e instanceof Error ? e.message : 'Download failed' });
     } finally {
-      busy = false;
+      busy.delete(f.id);
     }
     render();
   };
 
-  const render = () => {
+  const renderChip = () => {
     chip.className = 'offline-chip';
-    let label = '…';
-    if (state.kind === 'ready') {
-      label = '● Offline ready';
-      chip.classList.add('is-ready');
-    } else if (state.kind === 'downloading') {
-      const pct = state.total ? Math.round((state.received / state.total) * 100) : null;
-      label = pct === null ? `↓ ${fmtMB(state.received)}` : `↓ ${pct}%`;
+    const required = opts.files.filter((f) => f.required).map((f) => states.get(f.id)!);
+    const downloading = [...states.values()].find((s) => s.kind === 'downloading');
+    if (downloading && downloading.kind === 'downloading') {
+      const pct = downloading.total ? Math.round((downloading.received / downloading.total) * 100) : null;
+      chip.textContent = pct === null ? `↓ ${fmtMB(downloading.received)}` : `↓ ${pct}%`;
       chip.classList.add('is-busy');
-    } else if (state.kind === 'stale') {
-      label = '● Map update available';
+    } else if (required.every((s) => s.kind === 'ready')) {
+      chip.textContent = '● Offline ready';
+      chip.classList.add('is-ready');
+    } else if (required.some((s) => s.kind === 'stale')) {
+      chip.textContent = '● Map update available';
       chip.classList.add('is-missing');
-    } else if (state.kind === 'missing') {
-      label = '○ Offline map not downloaded';
+    } else if (required.some((s) => s.kind === 'error')) {
+      chip.textContent = '! Offline unavailable';
       chip.classList.add('is-missing');
-    } else if (state.kind === 'error') {
-      label = '! Offline unavailable';
+    } else if (required.some((s) => s.kind === 'unknown')) {
+      chip.textContent = '…';
+    } else {
+      chip.textContent = '○ Offline map not downloaded';
       chip.classList.add('is-missing');
     }
-    chip.textContent = label;
+  };
 
-    panel.innerHTML = '';
+  const renderRow = (f: OfflineFile): HTMLElement => {
+    const s = states.get(f.id)!;
+    const row = document.createElement('div');
+    row.className = 'offline-row';
+    const head = document.createElement('div');
+    head.className = 'offline-row-head';
+    const name = document.createElement('strong');
+    name.textContent = f.label;
+    const meta = document.createElement('span');
+    meta.className = 'offline-row-meta';
+    head.append(name, meta);
     const p = document.createElement('p');
     p.className = 'offline-text';
     const btn = document.createElement('button');
     btn.type = 'button';
-    btn.className = 'btn btn-primary';
-    if (state.kind === 'ready') {
-      p.textContent = `Basemap stored on this device (${fmtMB(state.bytes)}). The map works with no signal.`;
-      btn.textContent = 'Delete offline map';
-      btn.className = 'btn btn-ghost';
+    btn.className = 'btn btn-primary btn-small';
+    if (s.kind === 'ready') {
+      meta.textContent = `stored, ${fmtMB(s.bytes)}`;
+      p.textContent = f.required ? 'Works with no signal.' : 'Available offline.';
+      btn.textContent = 'Delete';
+      btn.className = 'btn btn-ghost btn-small';
       btn.addEventListener('click', async () => {
-        await deleteBasemap();
+        await deleteBasemap(f.url, f.version);
         await refresh();
       });
-    } else if (state.kind === 'downloading') {
-      p.textContent = `Downloading… ${fmtMB(state.received)}${state.total ? ` of ${fmtMB(state.total)}` : ''}. Keep this page open.`;
+    } else if (s.kind === 'downloading') {
+      meta.textContent = `${fmtMB(s.received)}${s.total ? ` / ${fmtMB(s.total)}` : ''}`;
+      p.textContent = 'Downloading… keep this page open.';
       btn.hidden = true;
-    } else if (state.kind === 'error') {
-      p.textContent = state.message;
+    } else if (s.kind === 'error') {
+      meta.textContent = 'failed';
+      p.textContent = s.message;
       btn.textContent = 'Retry';
-      btn.addEventListener('click', start);
+      btn.addEventListener('click', () => void start(f));
     } else {
+      meta.textContent = `~${f.sizeHintMB} MB`;
       p.textContent =
-        state.kind === 'stale'
-          ? 'A newer basemap is available. Download it while on wifi.'
-          : `Download the basemap (~${opts.sizeHintMB} MB) while on wifi so the map works off-grid.`;
-      btn.textContent = 'Download offline map';
-      btn.addEventListener('click', start);
+        s.kind === 'stale'
+          ? 'A newer version is available. Download it while on wifi.'
+          : f.required
+            ? 'Download while on wifi so the map works off-grid.'
+            : 'Optional. Hillshade relief for the Terrain layer.';
+      btn.textContent = 'Download';
+      btn.addEventListener('click', () => void start(f));
     }
-    panel.append(p, btn);
+    row.append(head, p, btn);
+    return row;
+  };
+
+  const render = () => {
+    renderChip();
+    panel.innerHTML = '';
+    for (const f of opts.files) panel.appendChild(renderRow(f));
     if (isIosBrowserTab()) {
       const hint = document.createElement('p');
       hint.className = 'offline-hint';

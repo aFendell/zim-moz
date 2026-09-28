@@ -5,10 +5,20 @@ import type { Leg, Location, MergedLocation, Overrides, PrecomputedLeg } from '.
 import { mergeLocations } from './data/merge';
 import { buildLegs, formatKm, totalKm } from './data/legs';
 import { createOverrideStore } from './data/store';
-import { BASEMAP_SIZE_MB, BASEMAP_URL, BASEMAP_VERSION, ESTIMATE_ROAD_FACTOR } from './config';
+import { getBasemapCacheState } from './data/basemapCache';
+import {
+  BASEMAP_SIZE_MB,
+  BASEMAP_URL,
+  BASEMAP_VERSION,
+  ESTIMATE_ROAD_FACTOR,
+  TERRAIN_SIZE_MB,
+  TERRAIN_URL,
+  TERRAIN_VERSION,
+} from './config';
 import { TripMap } from './map';
 import { CachedRangeSource } from './map/source';
 import { mountOfflinePanel } from './ui/offline';
+import { loadLayerPrefs, mountLayerPicker } from './ui/layers';
 import { renderLocationCard } from './ui/popup';
 import { EditSheet } from './ui/sheet';
 import { mountMenu } from './ui/menu';
@@ -22,6 +32,7 @@ app.innerHTML = `
   <div id="topright" class="topright"></div>
 `;
 const totalEl = document.getElementById('total')!;
+const topright = document.getElementById('topright')!;
 
 const store = createOverrideStore();
 let overrides: Overrides = {};
@@ -37,10 +48,15 @@ function recompute() {
 }
 
 const basemapUrl = new URL(BASEMAP_URL, window.location.href).toString();
+const terrainUrl = new URL(TERRAIN_URL, window.location.href).toString();
+const layerPrefs = loadLayerPrefs();
+
 const tripMap = new TripMap({
   container: document.getElementById('map')!,
-  source: new CachedRangeSource(basemapUrl, BASEMAP_VERSION),
+  basemap: new CachedRangeSource(basemapUrl, BASEMAP_VERSION),
+  terrain: new CachedRangeSource(terrainUrl, TERRAIN_VERSION),
   baseUrl,
+  layers: layerPrefs,
   onSelect: (id) => navigate({ locationId: id, edit: false }),
   renderPopup: (loc, legIn, legOut) =>
     renderLocationCard(loc, legIn, legOut, baseUrl, (id) => navigate({ locationId: id, edit: true })),
@@ -59,14 +75,18 @@ const sheet = new EditSheet(app, {
     recompute();
     navigate({ locationId: id, edit: false });
   },
-  onClose: () => {
-    const id = sheetLocationId;
-    navigate({ locationId: id, edit: false });
-  },
+  onClose: () => navigate({ locationId: sheetLocationId, edit: false }),
 });
 let sheetLocationId: string | null = null;
 
-mountMenu(document.getElementById('topright')!, {
+mountLayerPicker({
+  parent: topright,
+  initial: layerPrefs,
+  terrainReady: async () => (await getBasemapCacheState(terrainUrl, TERRAIN_VERSION)).kind === 'ready',
+  onChange: (prefs) => tripMap.setLayers(prefs),
+});
+
+mountMenu(topright, {
   getOverrides: () => overrides,
   onImport: async (imported) => {
     await store.replaceAll({ ...overrides, ...imported });
@@ -83,10 +103,25 @@ mountMenu(document.getElementById('topright')!, {
 });
 
 mountOfflinePanel({
-  url: basemapUrl,
-  version: BASEMAP_VERSION,
   parent: document.getElementById('offline')!,
-  sizeHintMB: BASEMAP_SIZE_MB,
+  files: [
+    {
+      id: 'basemap',
+      label: 'Basemap',
+      url: basemapUrl,
+      version: BASEMAP_VERSION,
+      sizeHintMB: BASEMAP_SIZE_MB,
+      required: true,
+    },
+    {
+      id: 'terrain',
+      label: 'Terrain',
+      url: terrainUrl,
+      version: TERRAIN_VERSION,
+      sizeHintMB: TERRAIN_SIZE_MB,
+      required: false,
+    },
+  ],
 });
 
 // Debug handle for browser tooling; not part of the app API.

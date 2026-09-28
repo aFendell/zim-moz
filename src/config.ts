@@ -8,5 +8,10 @@ export const BASEMAP_VERSION = 1;
 // Shown in the download prompt; update when the extract size changes.
 export const BASEMAP_SIZE_MB = 75;
 
+// Optional hillshade DEM (Terrarium PNG PMTiles), built by scripts/terrain.py.
+export const TERRAIN_URL = import.meta.env.VITE_TERRAIN_URL ?? `${import.meta.env.BASE_URL}zim-moz-terrain.pmtiles`;
+export const TERRAIN_VERSION = 1;
+export const TERRAIN_SIZE_MB = 32;
+
 // Multiplier applied to straight-line distance when a leg cannot use routed geometry.
 export const ESTIMATE_ROAD_FACTOR = 1.3;

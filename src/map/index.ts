@@ -4,13 +4,21 @@ import 'maplibre-gl/dist/maplibre-gl.css';
 import type { FeatureCollection } from 'geojson';
 import type { Leg, MergedLocation } from '../data/types';
 import { formatKm } from '../data/legs';
-import { buildStyle } from './style';
+import { buildStyle, type Flavor } from './style';
+
+export interface LayerPrefs {
+  flavor: Flavor;
+  terrain: boolean;
+}
 
 export interface TripMapOptions {
   container: HTMLElement;
-  /** PMTiles byte source (cache-aware). Its key becomes the style's pmtiles:// URL. */
-  source: Source;
+  /** PMTiles byte source for the vector basemap (cache-aware). */
+  basemap: Source;
+  /** Optional PMTiles byte source for the Terrarium DEM. */
+  terrain?: Source;
   baseUrl: string;
+  layers: LayerPrefs;
   onSelect: (id: string | null) => void;
   renderPopup: (loc: MergedLocation, legIn: Leg | undefined, legOut: Leg | undefined) => HTMLElement;
 }
@@ -33,14 +41,17 @@ export class TripMap {
   private locations: MergedLocation[] = [];
   private legs: Leg[] = [];
   private opts: TripMapOptions;
+  private layers: LayerPrefs;
   private ready = false;
 
   constructor(opts: TripMapOptions) {
     this.opts = opts;
-    getProtocol().add(new PMTiles(opts.source));
+    this.layers = { ...opts.layers };
+    getProtocol().add(new PMTiles(opts.basemap));
+    if (opts.terrain) getProtocol().add(new PMTiles(opts.terrain));
     this.map = new MlMap({
       container: opts.container,
-      style: buildStyle(opts.source.getKey(), opts.baseUrl),
+      style: this.style(),
       center: [32.5, -21],
       zoom: 5,
       attributionControl: { compact: true },
@@ -51,9 +62,32 @@ export class TripMap {
       this.addRouteLayers();
       this.render(this.locations, this.legs);
     });
+    // Route layers live in the style, so re-add them after every setStyle().
+    this.map.on('style.load', () => {
+      if (!this.ready) return;
+      this.addRouteLayers();
+      this.setRouteData();
+    });
+  }
+
+  private style() {
+    return buildStyle({
+      basemapKey: this.opts.basemap.getKey(),
+      baseUrl: this.opts.baseUrl,
+      flavor: this.layers.flavor,
+      terrainKey: this.layers.terrain && this.opts.terrain ? this.opts.terrain.getKey() : undefined,
+    });
+  }
+
+  /** Switch light/dark and/or hillshade. Markers and popups are DOM and survive. */
+  setLayers(prefs: LayerPrefs) {
+    if (prefs.flavor === this.layers.flavor && prefs.terrain === this.layers.terrain) return;
+    this.layers = { ...prefs };
+    this.map.setStyle(this.style());
   }
 
   private addRouteLayers() {
+    if (this.map.getSource(ROUTE_SRC)) return;
     this.map.addSource(ROUTE_SRC, { type: 'geojson', data: emptyFC() });
     this.map.addLayer({
       id: 'route-casing',
@@ -83,6 +117,12 @@ export class TripMap {
       this.map.on('mouseenter', layer, () => (this.map.getCanvas().style.cursor = 'pointer'));
       this.map.on('mouseleave', layer, () => (this.map.getCanvas().style.cursor = ''));
     }
+  }
+
+  private legClickBound = false;
+  private bindLegClick() {
+    if (this.legClickBound) return;
+    this.legClickBound = true;
     this.map.on('click', (e) => {
       const f = this.map.queryRenderedFeatures(e.point, { layers: ['route-line', 'route-line-est'] })[0];
       if (!f) return;
@@ -95,17 +135,13 @@ export class TripMap {
     });
   }
 
-  /** Replace all data. Safe to call before map load. */
-  render(locations: MergedLocation[], legs: Leg[]) {
-    this.locations = locations;
-    this.legs = legs;
-    if (!this.ready) return;
-
-    const byId = new Map(locations.map((l) => [l.id, l]));
-    const src = this.map.getSource(ROUTE_SRC) as maplibregl.GeoJSONSource;
+  private setRouteData() {
+    const src = this.map.getSource(ROUTE_SRC) as maplibregl.GeoJSONSource | undefined;
+    if (!src) return;
+    const byId = new Map(this.locations.map((l) => [l.id, l]));
     src.setData({
       type: 'FeatureCollection',
-      features: legs.map((leg) => ({
+      features: this.legs.map((leg) => ({
         type: 'Feature',
         properties: {
           index: leg.index,
@@ -116,6 +152,15 @@ export class TripMap {
         geometry: { type: 'LineString', coordinates: leg.geometry },
       })),
     });
+  }
+
+  /** Replace all data. Safe to call before map load. */
+  render(locations: MergedLocation[], legs: Leg[]) {
+    this.locations = locations;
+    this.legs = legs;
+    if (!this.ready) return;
+    this.bindLegClick();
+    this.setRouteData();
 
     for (const m of this.markers.values()) m.remove();
     this.markers.clear();

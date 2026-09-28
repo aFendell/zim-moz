@@ -33,7 +33,8 @@ jobs:
       - name: Fetch basemap into dist
         run: |
           curl -fsSL -o dist/zim-moz.pmtiles "${{ vars.BASEMAP_URL }}"
-          ls -lh dist/zim-moz.pmtiles
+          curl -fsSL -o dist/zim-moz-terrain.pmtiles "${{ vars.TERRAIN_URL }}"
+          ls -lh dist/*.pmtiles
       - uses: actions/upload-pages-artifact@v3
         with:
           path: dist

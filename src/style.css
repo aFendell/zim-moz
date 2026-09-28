@@ -220,6 +220,30 @@ body,
   flex-direction: column;
   gap: 10px;
 }
+.offline-row {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid #e5e7eb;
+}
+.offline-row:last-of-type {
+  border-bottom: 0;
+  padding-bottom: 0;
+}
+.offline-row-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  font-size: 14px;
+}
+.offline-row-meta {
+  font-size: 12px;
+  color: var(--muted);
+}
+.offline-row .btn {
+  align-self: flex-start;
+}
 .offline-text,
 .offline-hint {
   margin: 0;
@@ -245,9 +269,11 @@ body,
 #map .maplibregl-ctrl-top-right {
   top: calc(var(--safe-top) + 46px);
 }
-.menu {
+.menu,
+.layers {
   position: relative;
 }
+.layers-toggle,
 .menu-toggle {
   width: 36px;
   height: 36px;
@@ -259,6 +285,7 @@ body,
   line-height: 1;
   cursor: pointer;
 }
+.layers-panel,
 .menu-panel {
   position: absolute;
   right: 0;
@@ -288,6 +315,40 @@ body,
   margin: 6px 12px;
   font-size: 12px;
   color: var(--muted);
+}
+.layers-panel {
+  gap: 2px;
+  padding: 8px 6px;
+}
+.layers-title {
+  font-size: 12px;
+  color: var(--muted);
+  padding: 2px 12px 6px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.layers-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  font-size: 14px;
+  cursor: pointer;
+  border-radius: 6px;
+}
+.layers-row:hover {
+  background: #f3f4f6;
+}
+.layers-row input {
+  margin: 0;
+  width: 16px;
+  height: 16px;
+}
+.layers-hint {
+  font-size: 12px;
+  color: var(--muted);
+  padding: 4px 12px 2px;
+  line-height: 1.4;
 }
 
 /* Bottom sheet */

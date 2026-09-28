@@ -34,8 +34,9 @@ export async function getBasemapCacheState(url: string, version: number): Promis
     const cache = await caches.open(CACHE_NAME);
     const hit = await cache.match(cacheKey(url, version));
     if (hit) return { kind: 'ready', bytes: (await hit.blob()).size };
-    const keys = await cache.keys();
-    return keys.length > 0 ? { kind: 'stale' } : { kind: 'missing' };
+    const path = new URL(cacheKey(url, version)).pathname;
+    const older = (await cache.keys()).some((k) => new URL(k.url).pathname === path);
+    return older ? { kind: 'stale' } : { kind: 'missing' };
   } catch (e) {
     return { kind: 'error', message: e instanceof Error ? e.message : String(e) };
   }
@@ -61,7 +62,9 @@ export async function downloadBasemap(
   }
   const blob = new Blob(chunks, { type: 'application/octet-stream' });
   const cache = await caches.open(CACHE_NAME);
-  for (const k of await cache.keys()) await cache.delete(k); // drop older versions
+  // Drop older versions of this same file (other files in the cache are untouched).
+  const path = new URL(cacheKey(url, version)).pathname;
+  for (const k of await cache.keys()) if (new URL(k.url).pathname === path) await cache.delete(k);
   await cache.put(
     cacheKey(url, version),
     new Response(blob, {
@@ -73,7 +76,9 @@ export async function downloadBasemap(
   return blob.size;
 }
 
-export async function deleteBasemap(): Promise<void> {
-  await caches.delete(CACHE_NAME);
+export async function deleteBasemap(url: string, version: number): Promise<void> {
+  const cache = await caches.open(CACHE_NAME);
+  const path = new URL(cacheKey(url, version)).pathname;
+  for (const k of await cache.keys()) if (new URL(k.url).pathname === path) await cache.delete(k);
   globalThis.dispatchEvent(new CustomEvent(BASEMAP_CACHE_EVENT));
 }

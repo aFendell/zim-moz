@@ -18,10 +18,14 @@ PWA showing a driving loop Harare → Gonarezhou → Mozambique coast → Chimoi
 - `yarn route` — regenerate `src/data/legs.json` from seed locations via OSRM (needs network)
 - `yarn tiles` — extract basemap PMTiles for trip bbox (auto-downloads `pmtiles` binary to `.tools/`; output gitignored, ~75 MB)
 - `yarn assets` — refresh self-hosted glyphs/sprites in `public/` (committed)
+- `python3 scripts/terrain.py [maxzoom]` — build Terrarium DEM PMTiles for hillshade (z0-9 ≈ 31 MB; z10 ≈ 93 MB). Output gitignored, upload as Release asset `terrain-vN`, set repo variable `TERRAIN_URL`.
 
 ## Visual checks
 - Chrome `--headless --screenshot` renders a blank map (fetches abort). Use puppeteer-core instead: script lives in the session scratchpad (`shot.js`), reads `window.__tripMap` for map state. Run `yarn preview --port 4173` first.
 - `line-dasharray` is not data-driven in MapLibre: routed vs estimated legs are separate layers.
+- Route layers live in the style; `TripMap` re-adds them on every `style.load` (Light/Dark/Terrain switch uses `setStyle`).
+- Label override (`latinLabelsOnly`) must skip layers whose text-field isn't a `name` (road shields use `shield_text`), else shields render as empty ovals.
+- Layer prefs persist in localStorage `zim-moz:layers`. Terrain is optional, second file in the offline panel.
 
 ## Layout
 - `src/data/` — seed `locations.json`, generated `legs.json`, pure modules (`merge`, `legs`, `geo`), `store` (IndexedDB)
