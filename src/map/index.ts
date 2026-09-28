@@ -147,7 +147,12 @@ export class TripMap {
     const legIn = this.legs.find((l) => l.toId === id);
     const legOut = this.legs.find((l) => l.fromId === id);
     const content = this.opts.renderPopup(loc, legIn, legOut);
-    this.popup = new Popup({ closeButton: true, maxWidth: '320px', className: 'loc-popup', offset: 18 })
+    this.popup = new Popup({
+      closeButton: true,
+      maxWidth: 'min(320px, calc(100vw - 40px))',
+      className: 'loc-popup',
+      offset: 18,
+    })
       .setLngLat([loc.lng, loc.lat])
       .setDOMContent(content)
       .addTo(this.map);

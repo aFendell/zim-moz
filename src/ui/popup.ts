@@ -17,6 +17,7 @@ export function renderLocationCard(
   legIn: Leg | undefined,
   legOut: Leg | undefined,
   baseUrl: string,
+  onEdit: (id: string) => void,
 ): HTMLElement {
   const card = el('div', 'card');
   if (loc.image) {
@@ -51,5 +52,12 @@ export function renderLocationCard(
     if (dl.childElementCount) card.appendChild(dl);
   }
   if (loc.notes) card.appendChild(el('p', 'card-notes', loc.notes));
+
+  const actions = el('div', 'card-actions');
+  const edit = el('button', 'btn btn-small', 'Edit');
+  edit.type = 'button';
+  edit.addEventListener('click', () => onEdit(loc.id));
+  actions.appendChild(edit);
+  card.appendChild(actions);
   return card;
 }

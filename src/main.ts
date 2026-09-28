@@ -1,42 +1,104 @@
 import './style.css';
 import seed from './data/locations.json';
 import precomputed from './data/legs.json';
-import type { Location, PrecomputedLeg } from './data/types';
+import type { Leg, Location, MergedLocation, Overrides, PrecomputedLeg } from './data/types';
 import { mergeLocations } from './data/merge';
 import { buildLegs, formatKm, totalKm } from './data/legs';
+import { createOverrideStore } from './data/store';
 import { BASEMAP_URL, ESTIMATE_ROAD_FACTOR } from './config';
 import { TripMap } from './map';
 import { renderLocationCard } from './ui/popup';
+import { EditSheet } from './ui/sheet';
+import { mountMenu } from './ui/menu';
 import { navigate, onRouteChange } from './router';
 
 const baseUrl = import.meta.env.BASE_URL;
 const app = document.getElementById('app')!;
-
 app.innerHTML = `
   <div id="map"></div>
   <div id="total" class="total-pill"></div>
+  <div id="topright" class="topright"></div>
 `;
-
-const overrides = {}; // TODO(edit stage): load from IndexedDB
-const locations = mergeLocations(seed as Location[], overrides);
-const legs = buildLegs(locations, precomputed as PrecomputedLeg[], ESTIMATE_ROAD_FACTOR);
-
 const totalEl = document.getElementById('total')!;
-const anyEstimated = legs.some((l) => l.source === 'estimated');
-totalEl.textContent = `Total ${formatKm(totalKm(legs), anyEstimated ? 'estimated' : 'routed')}`;
+
+const store = createOverrideStore();
+let overrides: Overrides = {};
+let locations: MergedLocation[] = [];
+let legs: Leg[] = [];
+
+function recompute() {
+  locations = mergeLocations(seed as Location[], overrides);
+  legs = buildLegs(locations, precomputed as PrecomputedLeg[], ESTIMATE_ROAD_FACTOR);
+  const anyEstimated = legs.some((l) => l.source === 'estimated');
+  totalEl.textContent = `Total ${formatKm(totalKm(legs), anyEstimated ? 'estimated' : 'routed')}`;
+  tripMap.render(locations, legs);
+}
 
 const tripMap = new TripMap({
   container: document.getElementById('map')!,
   pmtilesUrl: BASEMAP_URL,
   baseUrl,
   onSelect: (id) => navigate({ locationId: id, edit: false }),
-  renderPopup: (loc, legIn, legOut) => renderLocationCard(loc, legIn, legOut, baseUrl),
+  renderPopup: (loc, legIn, legOut) =>
+    renderLocationCard(loc, legIn, legOut, baseUrl, (id) => navigate({ locationId: id, edit: true })),
 });
-tripMap.render(locations, legs);
+
+const sheet = new EditSheet(app, {
+  onSave: async (id, override) => {
+    await store.save(id, override);
+    overrides = await store.loadAll();
+    recompute();
+    navigate({ locationId: id, edit: false });
+  },
+  onReset: async (id) => {
+    await store.reset(id);
+    overrides = await store.loadAll();
+    recompute();
+    navigate({ locationId: id, edit: false });
+  },
+  onClose: () => {
+    const id = sheetLocationId;
+    navigate({ locationId: id, edit: false });
+  },
+});
+let sheetLocationId: string | null = null;
+
+mountMenu(document.getElementById('topright')!, {
+  getOverrides: () => overrides,
+  onImport: async (imported) => {
+    await store.replaceAll({ ...overrides, ...imported });
+    overrides = await store.loadAll();
+    recompute();
+    navigate({ locationId: null, edit: false });
+  },
+  onClearAll: async () => {
+    await store.replaceAll({});
+    overrides = {};
+    recompute();
+    navigate({ locationId: null, edit: false });
+  },
+});
+
 // Debug handle for browser tooling; not part of the app API.
 (window as unknown as { __tripMap: TripMap }).__tripMap = tripMap;
 
-tripMap.map.on('load', () => {
+(async () => {
+  overrides = await store.loadAll();
+  recompute();
+  await new Promise<void>((r) => (tripMap.map.loaded() ? r() : tripMap.map.once('load', () => r())));
   tripMap.fitAll();
-  onRouteChange((route) => tripMap.select(route.locationId));
-});
+  onRouteChange((route) => {
+    if (route.edit && route.locationId) {
+      const loc = locations.find((l) => l.id === route.locationId);
+      if (loc) {
+        sheetLocationId = loc.id;
+        tripMap.select(null);
+        sheet.open(loc);
+        return;
+      }
+    }
+    sheetLocationId = null;
+    sheet.close();
+    tripMap.select(route.locationId);
+  });
+})();
