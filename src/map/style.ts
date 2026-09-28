@@ -1,5 +1,5 @@
 import { LIGHT, layers } from '@protomaps/basemaps';
-import type { StyleSpecification } from 'maplibre-gl';
+import type { LayerSpecification, StyleSpecification } from 'maplibre-gl';
 
 /** Basemap style with all assets self-hosted under the app's base URL. */
 export function buildStyle(pmtilesUrl: string, baseUrl: string): StyleSpecification {
@@ -17,6 +17,21 @@ export function buildStyle(pmtilesUrl: string, baseUrl: string): StyleSpecificat
         attribution: '© OpenStreetMap contributors, Protomaps',
       },
     },
-    layers: layers('protomaps', LIGHT, { lang: 'en' }),
+    layers: latinLabelsOnly(layers('protomaps', LIGHT, { lang: 'en' })),
   };
+}
+
+/**
+ * Replace Protomaps' multilingual label expression with English-or-local name.
+ * The tileset carries name:ar/fa/ur etc.; without this MapLibre requests
+ * non-Latin glyph ranges we deliberately do not ship.
+ */
+function latinLabelsOnly(specs: LayerSpecification[]): LayerSpecification[] {
+  return specs.map((l) => {
+    if (l.type !== 'symbol' || !l.layout || !('text-field' in l.layout)) return l;
+    return {
+      ...l,
+      layout: { ...l.layout, 'text-field': ['coalesce', ['get', 'name:en'], ['get', 'name']] },
+    };
+  });
 }
