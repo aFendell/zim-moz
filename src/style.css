@@ -242,8 +242,8 @@ body,
   gap: 8px;
   align-items: flex-start;
 }
-.maplibregl-ctrl-top-right {
-  top: calc(var(--safe-top) + 52px);
+#map .maplibregl-ctrl-top-right {
+  top: calc(var(--safe-top) + 46px);
 }
 .menu {
   position: relative;
