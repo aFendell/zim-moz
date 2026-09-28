@@ -26,11 +26,17 @@ body,
   display: none !important;
 }
 
-.total-pill {
+.topleft {
   position: absolute;
   top: calc(var(--safe-top) + 10px);
   left: 10px;
   z-index: 5;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+}
+.total-pill {
   background: rgba(255, 255, 255, 0.95);
   border-radius: 999px;
   padding: 6px 12px;
@@ -174,6 +180,56 @@ body,
 .btn-ghost {
   border-color: transparent;
   color: var(--muted);
+}
+
+/* Offline chip + panel */
+.offline {
+  position: relative;
+}
+.offline-chip {
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 4px 10px;
+  border-radius: 999px;
+  border: 0;
+  background: rgba(255, 255, 255, 0.95);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.25);
+  color: var(--muted);
+  cursor: pointer;
+}
+.offline-chip.is-ready {
+  color: #15803d;
+}
+.offline-chip.is-missing {
+  color: #b45309;
+}
+.offline-chip.is-busy {
+  color: var(--blue);
+}
+.offline-panel {
+  position: absolute;
+  left: 0;
+  top: 32px;
+  width: min(300px, calc(100vw - 20px));
+  background: #fff;
+  border-radius: 10px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.25);
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.offline-text,
+.offline-hint {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.4;
+}
+.offline-hint {
+  color: var(--muted);
+  border-top: 1px solid #e5e7eb;
+  padding-top: 8px;
 }
 
 /* Top-right controls (menu) */

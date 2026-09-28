@@ -5,6 +5,8 @@ export const BASEMAP_URL = import.meta.env.VITE_BASEMAP_URL ?? `${import.meta.en
 
 // Bump when basemap changes so clients know to re-download.
 export const BASEMAP_VERSION = 1;
+// Shown in the download prompt; update when the extract size changes.
+export const BASEMAP_SIZE_MB = 75;
 
 // Multiplier applied to straight-line distance when a leg cannot use routed geometry.
 export const ESTIMATE_ROAD_FACTOR = 1.3;

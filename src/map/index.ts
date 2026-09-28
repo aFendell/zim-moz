@@ -1,5 +1,5 @@
 import maplibregl, { type LngLatBoundsLike, Map as MlMap, Marker, Popup } from 'maplibre-gl';
-import { Protocol } from 'pmtiles';
+import { PMTiles, Protocol, type Source } from 'pmtiles';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import type { FeatureCollection } from 'geojson';
 import type { Leg, MergedLocation } from '../data/types';
@@ -8,7 +8,8 @@ import { buildStyle } from './style';
 
 export interface TripMapOptions {
   container: HTMLElement;
-  pmtilesUrl: string;
+  /** PMTiles byte source (cache-aware). Its key becomes the style's pmtiles:// URL. */
+  source: Source;
   baseUrl: string;
   onSelect: (id: string | null) => void;
   renderPopup: (loc: MergedLocation, legIn: Leg | undefined, legOut: Leg | undefined) => HTMLElement;
@@ -16,7 +17,14 @@ export interface TripMapOptions {
 
 const ROUTE_SRC = 'route';
 
-let protocolRegistered = false;
+let protocol: Protocol | null = null;
+function getProtocol(): Protocol {
+  if (!protocol) {
+    protocol = new Protocol();
+    maplibregl.addProtocol('pmtiles', protocol.tile);
+  }
+  return protocol;
+}
 
 export class TripMap {
   readonly map: MlMap;
@@ -29,13 +37,10 @@ export class TripMap {
 
   constructor(opts: TripMapOptions) {
     this.opts = opts;
-    if (!protocolRegistered) {
-      maplibregl.addProtocol('pmtiles', new Protocol().tile);
-      protocolRegistered = true;
-    }
+    getProtocol().add(new PMTiles(opts.source));
     this.map = new MlMap({
       container: opts.container,
-      style: buildStyle(opts.pmtilesUrl, opts.baseUrl),
+      style: buildStyle(opts.source.getKey(), opts.baseUrl),
       center: [32.5, -21],
       zoom: 5,
       attributionControl: { compact: true },

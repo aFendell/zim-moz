@@ -5,8 +5,10 @@ import type { Leg, Location, MergedLocation, Overrides, PrecomputedLeg } from '.
 import { mergeLocations } from './data/merge';
 import { buildLegs, formatKm, totalKm } from './data/legs';
 import { createOverrideStore } from './data/store';
-import { BASEMAP_URL, ESTIMATE_ROAD_FACTOR } from './config';
+import { BASEMAP_SIZE_MB, BASEMAP_URL, BASEMAP_VERSION, ESTIMATE_ROAD_FACTOR } from './config';
 import { TripMap } from './map';
+import { CachedRangeSource } from './map/source';
+import { mountOfflinePanel } from './ui/offline';
 import { renderLocationCard } from './ui/popup';
 import { EditSheet } from './ui/sheet';
 import { mountMenu } from './ui/menu';
@@ -16,7 +18,7 @@ const baseUrl = import.meta.env.BASE_URL;
 const app = document.getElementById('app')!;
 app.innerHTML = `
   <div id="map"></div>
-  <div id="total" class="total-pill"></div>
+  <div class="topleft"><div id="total" class="total-pill"></div><div id="offline"></div></div>
   <div id="topright" class="topright"></div>
 `;
 const totalEl = document.getElementById('total')!;
@@ -34,9 +36,10 @@ function recompute() {
   tripMap.render(locations, legs);
 }
 
+const basemapUrl = new URL(BASEMAP_URL, window.location.href).toString();
 const tripMap = new TripMap({
   container: document.getElementById('map')!,
-  pmtilesUrl: BASEMAP_URL,
+  source: new CachedRangeSource(basemapUrl, BASEMAP_VERSION),
   baseUrl,
   onSelect: (id) => navigate({ locationId: id, edit: false }),
   renderPopup: (loc, legIn, legOut) =>
@@ -77,6 +80,13 @@ mountMenu(document.getElementById('topright')!, {
     recompute();
     navigate({ locationId: null, edit: false });
   },
+});
+
+mountOfflinePanel({
+  url: basemapUrl,
+  version: BASEMAP_VERSION,
+  parent: document.getElementById('offline')!,
+  sizeHintMB: BASEMAP_SIZE_MB,
 });
 
 // Debug handle for browser tooling; not part of the app API.
