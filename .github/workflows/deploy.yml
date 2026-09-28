@@ -28,6 +28,9 @@ jobs:
       - run: yarn lint
       - run: yarn test
       - run: yarn build
+        env:
+          # Set repo variable BASEMAP_URL to the GitHub Release asset URL once uploaded.
+          VITE_BASEMAP_URL: ${{ vars.BASEMAP_URL }}
       - uses: actions/upload-pages-artifact@v3
         with:
           path: dist

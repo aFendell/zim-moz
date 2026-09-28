@@ -49,7 +49,8 @@ A single static web app (PWA) opened from a link. On first load with wifi it cac
 
 ### Delivery
 - Static PWA, no backend, no login. Hosted on any static host (GitHub Pages, Netlify, Cloudflare Pages).
-- Service worker via Workbox (vite-plugin-pwa). App shell, seed data, seed images precached. Basemap file is not precached; it is fetched on explicit user action and stored in Cache API with runtime caching rule (range requests supported).
+- Service worker via Workbox (vite-plugin-pwa). App shell, seed data, generated legs, glyphs, sprites, seed images precached. Basemap file is not precached; it is fetched in full on explicit user action and stored in the Cache API under a versioned key. A custom PMTiles `Source` serves byte ranges from that cached blob when present and falls back to HTTP Range requests otherwise, so no service-worker range handling is needed and the map works even before the service worker controls the page.
+- Basemap URL is a build-time constant (`VITE_BASEMAP_URL`); in dev it is served from `public/`. Cross-origin hosting (GitHub Release asset) works because the file is fetched with CORS and cached client-side.
 - In-app banner on iOS Safari (not standalone) recommending Add to Home Screen.
 - Offline readiness indicator derived from Cache API, not app state.
 
@@ -72,7 +73,7 @@ A single static web app (PWA) opened from a link. On first load with wifi it cac
 - Editable fields: `name`, `description`, `notes`, `lat`, `lng`. Not editable: `type`, `id`, order, image (seed images only in v1).
 
 ### Distances
-- Build script calls OSRM public routing API (driving profile) per leg, honoring `via` waypoints. Stores distance and geometry.
+- Build script calls OSRM public routing API (driving profile) per leg, honoring `via` waypoints (on the arriving location) and `routeExit` (on the departing location: a nearby routable point joined to the pin by a straight stub, for park roads disconnected in OSM). Stores distance and geometry.
 - If routing fails for a leg the build fails; organizer adds `via` or accepts estimate by explicit flag.
 - Runtime fallback: if a location's `lat`/`lng` is overridden, affected legs recompute as haversine × 1.3 and display with an "≈" prefix and `estimated` styling. Precomputed geometry for those legs is hidden and replaced by a straight dashed line.
 - Total = sum of all leg distances (routed or estimated). No time/duration anywhere.
@@ -107,7 +108,7 @@ A single static web app (PWA) opened from a link. On first load with wifi it cac
 3. Add workflow `.github/workflows/deploy.yml`: on push to `main`, checkout, setup Node, install, `yarn test`, `yarn build`, upload `dist` with `actions/upload-pages-artifact`, deploy with `actions/deploy-pages`. Needs `permissions: pages: write, id-token: write`.
 4. Generate basemap locally once (`yarn tiles`, see below). Do not commit it; it is gitignored.
 5. Create a Release (e.g. tag `basemap-v1`) in GitHub UI or `gh release create`, attach the PMTiles file as asset.
-6. Copy the asset download URL (`https://github.com/<owner>/<repo>/releases/download/basemap-v1/<file>.pmtiles`) into the app config constant. Commit, push, Actions deploys.
+6. Set the asset download URL (`https://github.com/<owner>/<repo>/releases/download/basemap-v1/<file>.pmtiles`) as `VITE_BASEMAP_URL` in the deploy workflow's build step (or a repo variable). Commit, push, Actions deploys.
 7. Share `https://<owner>.github.io/<repo>/` on WhatsApp.
 
 #### Routine updates
