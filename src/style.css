@@ -79,7 +79,7 @@ body,
 }
 #map .maplibregl-ctrl-bottom-right,
 #map .maplibregl-ctrl-bottom-left {
-  bottom: 68px;
+  bottom: 30px;
 }
 
 /* Markers */
@@ -246,7 +246,7 @@ body,
 .drawer-handle {
   display: flex;
   justify-content: center;
-  padding: 8px 0 4px;
+  padding: 10px 0;
   cursor: grab;
 }
 .drawer-grip {
@@ -302,8 +302,41 @@ body,
   gap: 18px;
   touch-action: pan-y;
 }
-.drawer.is-open .drawer-peek {
-  border-bottom: 1px solid #e5e7eb;
+.tile-hint {
+  margin: 8px 0 0;
+  font-size: 12px;
+  color: var(--muted);
+  line-height: 1.4;
+}
+.collapsible {
+  border-top: 1px solid #f3f4f6;
+}
+.collapsible summary {
+  list-style: none;
+  cursor: pointer;
+  padding: 12px 0;
+  font-size: 15px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.collapsible summary::-webkit-details-marker {
+  display: none;
+}
+.collapsible summary::after {
+  content: '›';
+  color: var(--muted);
+  font-size: 20px;
+  transition: transform 0.15s;
+}
+.collapsible[open] summary::after {
+  transform: rotate(90deg);
+}
+.collapsible-body {
+  padding: 0 0 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
 }
 
 /* Sheet (edit form) shares the drawer look */

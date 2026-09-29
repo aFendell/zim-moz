@@ -79,6 +79,7 @@ export function mountDrawer(parent: HTMLElement): Drawer {
       setOpen(true);
       if (sectionId) {
         const el = body.querySelector<HTMLElement>(`#${sectionId}`);
+        if (el instanceof HTMLDetailsElement) el.open = true;
         el?.scrollIntoView({ block: 'start' });
       }
     },

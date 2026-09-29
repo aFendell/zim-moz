@@ -27,97 +27,89 @@ const GROUP_LABEL: Record<LandmarkGroup, string> = {
   services: 'Hospitals, police, ATMs',
 };
 
-/** Fills the drawer: quick chips in the peek strip, full settings in the body. */
+/** Fills the drawer body: Map type / Map details as tiles, then collapsible Settings. */
 export function mountSettings(o: SettingsOptions): void {
   const { drawer } = o;
-  const set = (patch: Partial<Prefs>) => {
-    o.onChange({ ...o.getPrefs(), ...patch });
-    renderPeek();
-  };
+  drawer.peek.hidden = true; // grip handle only
+  const set = (patch: Partial<Prefs>) => o.onChange({ ...o.getPrefs(), ...patch });
 
-  // ---- peek strip: quick chips
-  const renderPeek = () => {
-    const p = o.getPrefs();
-    drawer.peek.innerHTML = '';
-    const title = document.createElement('span');
-    title.className = 'peek-title';
-    title.textContent = 'Map & settings';
-    const chips = document.createElement('div');
-    chips.className = 'peek-chips';
-    for (const t of TYPES) chips.appendChild(chip(t.label, p.flavor === t.flavor, () => set({ flavor: t.flavor })));
-    chips.appendChild(chip('Terrain', p.terrain, () => set({ terrain: !p.terrain })));
-    chips.appendChild(chip('Landmarks', p.landmarks, () => set({ landmarks: !p.landmarks })));
-    drawer.peek.append(title, chips);
-  };
-
-  // ---- body
   const body = drawer.body;
   body.innerHTML = '';
 
-  // Map type
+  // ---- Map type tiles
   const secType = section('map-type', 'Map type');
-  const grid = document.createElement('div');
-  grid.className = 'type-grid';
-  const cards = new Map<Flavor, HTMLButtonElement>();
+  const typeGrid = document.createElement('div');
+  typeGrid.className = 'type-grid';
+  const typeCards = new Map<Flavor, HTMLButtonElement>();
+  const syncType = () => {
+    const f = o.getPrefs().flavor;
+    for (const [k, c] of typeCards) c.classList.toggle('is-active', k === f);
+  };
   for (const t of TYPES) {
-    const card = document.createElement('button');
-    card.type = 'button';
-    card.className = 'type-card';
-    const sw = document.createElement('div');
-    sw.className = 'type-swatch';
-    sw.style.background = `linear-gradient(135deg, ${t.swatch[0]} 0 45%, ${t.swatch[1]} 45% 70%, ${t.swatch[2]} 70%)`;
-    const lbl = document.createElement('span');
-    lbl.textContent = t.label;
-    card.append(sw, lbl);
-    card.addEventListener('click', () => {
+    const card = tile(t.label, gradient(t.swatch), () => {
       set({ flavor: t.flavor });
       syncType();
     });
-    cards.set(t.flavor, card);
-    grid.appendChild(card);
+    typeCards.set(t.flavor, card);
+    typeGrid.appendChild(card);
   }
-  const syncType = () => {
-    const f = o.getPrefs().flavor;
-    for (const [k, c] of cards) c.classList.toggle('is-active', k === f);
-  };
   syncType();
-  secType.appendChild(grid);
+  secType.appendChild(typeGrid);
 
-  // Details
+  // ---- Map details tiles (toggles)
   const secDetails = section('map-details', 'Map details');
-  const terrain = toggleRow('Terrain', '', () => o.getPrefs().terrain, (on) => set({ terrain: on }));
-  secDetails.appendChild(terrain.row);
+  const detailGrid = document.createElement('div');
+  detailGrid.className = 'type-grid';
+  const terrainTile = tile('Terrain', 'url("data:image/svg+xml,' + encodeURIComponent(TERRAIN_SVG) + '") center / cover, #ded8c8', () => {
+    set({ terrain: !o.getPrefs().terrain });
+    syncDetails();
+  });
+  const lmTile = tile('Landmarks', 'url("data:image/svg+xml,' + encodeURIComponent(LANDMARK_SVG) + '") center / cover, #e8e6dc', () => {
+    set({ landmarks: !o.getPrefs().landmarks });
+    syncDetails();
+  });
+  const syncDetails = () => {
+    const p = o.getPrefs();
+    terrainTile.classList.toggle('is-active', p.terrain);
+    lmTile.classList.toggle('is-active', p.landmarks);
+    sub.hidden = !p.landmarks;
+  };
+  detailGrid.append(terrainTile, lmTile);
+  secDetails.appendChild(detailGrid);
+  const terrainHint = document.createElement('p');
+  terrainHint.className = 'tile-hint';
+  terrainHint.hidden = true;
+  secDetails.appendChild(terrainHint);
   void o.terrainReady().then((ready) => {
     if (ready) return;
-    terrain.hint.textContent = navigator.onLine
-      ? 'Streams while online. Download it below for off-grid use.'
-      : 'Not downloaded. Get it below when on wifi.';
-    if (!navigator.onLine) terrain.input.disabled = true;
+    terrainHint.hidden = false;
+    terrainHint.textContent = navigator.onLine
+      ? 'Terrain streams while online. Download it under Settings › Offline files for off-grid use.'
+      : 'Terrain not downloaded. Get it under Settings › Offline files when on wifi.';
   });
-  const lm = toggleRow('Landmarks along the route', '', () => o.getPrefs().landmarks, (on) => {
-    set({ landmarks: on });
-    sub.hidden = !on;
-  });
-  secDetails.appendChild(lm.row);
   const sub = document.createElement('div');
   sub.className = 'toggle-sub';
-  sub.hidden = !o.getPrefs().landmarks;
   for (const g of GROUPS) {
-    const r = toggleRow(
-      GROUP_LABEL[g],
-      g === 'fuel' ? 'From OpenStreetMap, within 2.5 km of the route' : '',
-      () => o.getPrefs().landmarkGroups.includes(g),
-      (on) => {
-        const cur = o.getPrefs().landmarkGroups;
-        set({ landmarkGroups: on ? [...new Set([...cur, g])] : cur.filter((x) => x !== g) });
-      },
+    sub.appendChild(
+      toggleRow(
+        GROUP_LABEL[g],
+        g === 'fuel' ? 'From OpenStreetMap, within 2.5 km of the route' : '',
+        () => o.getPrefs().landmarkGroups.includes(g),
+        (on) => {
+          const cur = o.getPrefs().landmarkGroups;
+          set({ landmarkGroups: on ? [...new Set([...cur, g])] : cur.filter((x) => x !== g) });
+        },
+      ).row,
     );
-    sub.appendChild(r.row);
   }
   secDetails.appendChild(sub);
+  syncDetails();
+
+  // ---- Settings (collapsibles)
+  const secSettings = section('settings', 'Settings');
 
   // Colours
-  const secColors = section('colours', 'Colours');
+  const colours = collapsible('colours', 'Colours');
   const preview = document.createElement('div');
   preview.className = 'route-preview';
   const casing = document.createElement('div');
@@ -139,24 +131,25 @@ export function mountSettings(o: SettingsOptions): void {
     stopDot.style.background = p.stopColor;
     borderDot.style.background = p.borderColor;
   };
-  const colorRows: (() => void)[] = [];
+  const colorSyncs: (() => void)[] = [];
   const colorRow = (label: string, get: () => string, put: (c: string) => void) => {
     const r = swatchRow(label, get, (c) => {
       put(c);
       refreshPreview();
     });
-    colorRows.push(r.sync);
+    colorSyncs.push(r.sync);
     return r.el;
   };
-  secColors.append(
+  const lmColor = (g: LandmarkGroup) => (c: string) => set({ landmarkColors: { ...o.getPrefs().landmarkColors, [g]: c } });
+  colours.body.append(
     preview,
     colorRow('Route', () => o.getPrefs().routeColor, (c) => set({ routeColor: c })),
     colorRow('Route outline', () => o.getPrefs().routeCasing, (c) => set({ routeCasing: c })),
     colorRow('Our stops', () => o.getPrefs().stopColor, (c) => set({ stopColor: c })),
     colorRow('Border posts', () => o.getPrefs().borderColor, (c) => set({ borderColor: c })),
-    colorRow('Towns', () => o.getPrefs().landmarkColors.towns, (c) => set({ landmarkColors: { ...o.getPrefs().landmarkColors, towns: c } })),
-    colorRow('Fuel', () => o.getPrefs().landmarkColors.fuel, (c) => set({ landmarkColors: { ...o.getPrefs().landmarkColors, fuel: c } })),
-    colorRow('Services', () => o.getPrefs().landmarkColors.services, (c) => set({ landmarkColors: { ...o.getPrefs().landmarkColors, services: c } })),
+    colorRow('Towns', () => o.getPrefs().landmarkColors.towns, lmColor('towns')),
+    colorRow('Fuel', () => o.getPrefs().landmarkColors.fuel, lmColor('fuel')),
+    colorRow('Services', () => o.getPrefs().landmarkColors.services, lmColor('services')),
   );
   const reset = document.createElement('button');
   reset.type = 'button';
@@ -166,17 +159,17 @@ export function mountSettings(o: SettingsOptions): void {
     const d = DEFAULT_PREFS;
     set({ routeColor: d.routeColor, routeCasing: d.routeCasing, stopColor: d.stopColor, borderColor: d.borderColor, landmarkColors: { ...d.landmarkColors } });
     refreshPreview();
-    for (const s of colorRows) s();
+    for (const s of colorSyncs) s();
   });
-  secColors.appendChild(reset);
+  colours.body.appendChild(reset);
   refreshPreview();
 
-  // Offline
-  const secOffline = section('offline', 'Offline files');
-  renderOfflineRows(secOffline, o.offlineFiles);
+  // Offline files
+  const offline = collapsible('offline', 'Offline files');
+  renderOfflineRows(offline.body, o.offlineFiles);
 
   // My edits
-  const secEdits = section('my-edits', 'My edits');
+  const edits = collapsible('my-edits', 'My edits');
   const msg = document.createElement('p');
   msg.className = 'menu-msg';
   msg.hidden = true;
@@ -243,20 +236,33 @@ export function mountSettings(o: SettingsOptions): void {
   });
   clearBtn.classList.add('btn-ghost');
   actions.appendChild(clearBtn);
-  secEdits.append(actions, fileInput, msg);
+  edits.body.append(actions, fileInput, msg);
 
-  body.append(secType, secDetails, secColors, secOffline, secEdits);
-  renderPeek();
+  secSettings.append(colours.el, offline.el, edits.el);
+  body.append(secType, secDetails, secSettings);
 }
 
-function chip(label: string, active: boolean, onClick: () => void): HTMLButtonElement {
-  const b = document.createElement('button');
-  b.type = 'button';
-  b.className = `chip${active ? ' is-active' : ''}`;
-  b.textContent = label;
-  b.addEventListener('pointerdown', (e) => e.stopPropagation()); // don't start a drawer drag
-  b.addEventListener('click', onClick);
-  return b;
+const TERRAIN_SVG =
+  '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 80 60"><rect width="80" height="60" fill="#e3ddcc"/><path d="M0 48 L18 26 L30 38 L46 16 L62 34 L80 22 V60 H0Z" fill="#b9ad93"/><path d="M0 48 L18 26 L30 38 L46 16 L62 34 L80 22" fill="none" stroke="#8c7f65" stroke-width="2"/><path d="M18 26 L24 40 M46 16 L54 36" stroke="#a89b80" stroke-width="2"/></svg>';
+const LANDMARK_SVG =
+  '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 80 60"><rect width="80" height="60" fill="#e8e6dc"/><path d="M6 50 C 25 40, 35 20, 74 10" fill="none" stroke="#2563eb" stroke-width="4" stroke-linecap="round"/><circle cx="20" cy="43" r="4.5" fill="#ea580c" stroke="#fff" stroke-width="1.5"/><circle cx="40" cy="27" r="4.5" fill="#111827" stroke="#fff" stroke-width="1.5"/><circle cx="60" cy="15" r="4.5" fill="#0891b2" stroke="#fff" stroke-width="1.5"/></svg>';
+
+function gradient(s: [string, string, string]) {
+  return `linear-gradient(135deg, ${s[0]} 0 45%, ${s[1]} 45% 70%, ${s[2]} 70%)`;
+}
+
+function tile(label: string, background: string, onClick: () => void): HTMLButtonElement {
+  const card = document.createElement('button');
+  card.type = 'button';
+  card.className = 'type-card';
+  const sw = document.createElement('div');
+  sw.className = 'type-swatch';
+  sw.style.background = background;
+  const lbl = document.createElement('span');
+  lbl.textContent = label;
+  card.append(sw, lbl);
+  card.addEventListener('click', onClick);
+  return card;
 }
 
 function btn(label: string, onClick: () => void): HTMLButtonElement {
@@ -276,6 +282,18 @@ function section(id: string, title: string): HTMLElement {
   h.textContent = title;
   s.appendChild(h);
   return s;
+}
+
+function collapsible(id: string, title: string): { el: HTMLDetailsElement; body: HTMLElement } {
+  const el = document.createElement('details');
+  el.className = 'collapsible';
+  el.id = id;
+  const summary = document.createElement('summary');
+  summary.textContent = title;
+  const body = document.createElement('div');
+  body.className = 'collapsible-body';
+  el.append(summary, body);
+  return { el, body };
 }
 
 function toggleRow(label: string, hint: string, get: () => boolean, onChange: (on: boolean) => void) {
@@ -305,6 +323,8 @@ function swatchRow(label: string, current: () => string, pick: (c: string) => vo
   l.textContent = label;
   const row = document.createElement('div');
   row.className = 'swatches';
+  const input = document.createElement('input');
+  input.type = 'color';
   const sync = () => {
     for (const s of row.querySelectorAll<HTMLElement>('.swatch[data-color]')) s.classList.toggle('is-active', s.dataset.color === current());
     input.value = current();
@@ -325,8 +345,6 @@ function swatchRow(label: string, current: () => string, pick: (c: string) => vo
   const custom = document.createElement('label');
   custom.className = 'swatch swatch-custom';
   custom.title = 'Custom colour';
-  const input = document.createElement('input');
-  input.type = 'color';
   input.addEventListener('input', () => {
     pick(input.value);
     sync();
