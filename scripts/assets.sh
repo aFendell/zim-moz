@@ -21,7 +21,7 @@ echo "$FONTS" | tr '|' '\n' | while read -r font; do
 done
 
 mkdir -p "$ROOT/public/sprites"
-for f in light.json light.png light@2x.json light@2x.png dark.json dark.png dark@2x.json dark@2x.png; do
+for f in light.json light.png light@2x.json light@2x.png dark.json dark.png dark@2x.json dark@2x.png grayscale.json grayscale.png grayscale@2x.json grayscale@2x.png; do
   curl -sfL "$BASE/sprites/$SPRITE_VER/$f" -o "$ROOT/public/sprites/$f"
 done
 echo "sprites: $(ls "$ROOT/public/sprites" | tr '\n' ' ')"

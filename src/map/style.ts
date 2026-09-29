@@ -1,7 +1,6 @@
-import { DARK, LIGHT, layers } from '@protomaps/basemaps';
+import { DARK, GRAYSCALE, LIGHT, layers } from '@protomaps/basemaps';
 import type { LayerSpecification, StyleSpecification } from 'maplibre-gl';
-
-export type Flavor = 'light' | 'dark';
+import type { Flavor } from '../prefs';
 
 export interface StyleOptions {
   basemapKey: string;
@@ -11,13 +10,14 @@ export interface StyleOptions {
   terrainKey?: string;
 }
 
+const FLAVORS = { light: LIGHT, dark: DARK, grayscale: GRAYSCALE } as const;
+
 /** Basemap style with all assets self-hosted under the app's base URL. */
 export function buildStyle(o: StyleOptions): StyleSpecification {
   // Plain string concat: `new URL()` would percent-encode the {fontstack}/{range} tokens.
   const origin = window.location.origin;
   const base = o.baseUrl.startsWith('http') ? o.baseUrl : origin + o.baseUrl;
-  const flavor = o.flavor === 'dark' ? DARK : LIGHT;
-  let specs = latinLabelsOnly(layers('protomaps', flavor, { lang: 'en' }));
+  let specs = latinLabelsOnly(layers('protomaps', FLAVORS[o.flavor], { lang: 'en' }));
   const sources: StyleSpecification['sources'] = {
     protomaps: {
       type: 'vector',
@@ -31,7 +31,7 @@ export function buildStyle(o: StyleOptions): StyleSpecification {
       url: `pmtiles://${o.terrainKey}`,
       encoding: 'terrarium',
       tileSize: 256,
-      maxzoom: 10,
+      maxzoom: 9,
       attribution: 'Terrain: Mapzen / AWS',
     };
     specs = withHillshade(specs, o.flavor);
@@ -47,15 +47,16 @@ export function buildStyle(o: StyleOptions): StyleSpecification {
 
 /** Insert a hillshade layer just below the first water layer so lakes stay flat. */
 function withHillshade(specs: LayerSpecification[], flavor: Flavor): LayerSpecification[] {
+  const dark = flavor === 'dark';
   const hill: LayerSpecification = {
     id: 'hillshade',
     type: 'hillshade',
     source: 'terrain',
     paint: {
-      'hillshade-exaggeration': flavor === 'dark' ? 0.35 : 0.45,
-      'hillshade-shadow-color': flavor === 'dark' ? '#000000' : '#5b4a3a',
-      'hillshade-highlight-color': flavor === 'dark' ? '#3a3a3a' : '#ffffff',
-      'hillshade-accent-color': flavor === 'dark' ? '#000000' : '#6b5a4a',
+      'hillshade-exaggeration': dark ? 0.35 : 0.45,
+      'hillshade-shadow-color': dark ? '#000000' : '#5b4a3a',
+      'hillshade-highlight-color': dark ? '#3a3a3a' : '#ffffff',
+      'hillshade-accent-color': dark ? '#000000' : '#6b5a4a',
     },
   };
   const idx = specs.findIndex((l) => l.id === 'water' || l.id.startsWith('water'));

@@ -2,18 +2,19 @@ import type { Overrides } from '../data/types';
 import { exportOverrides, parseOverridesExport } from '../data/store';
 
 export interface MenuCallbacks {
+  onPersonalize: () => void;
   getOverrides: () => Overrides;
   onImport: (overrides: Overrides) => void;
   onClearAll: () => void;
 }
 
-/** Small overflow menu: export / import local edits, clear all. */
+/** Overflow menu: personalize, then local-edit tools (export / import / clear). */
 export function mountMenu(parent: HTMLElement, cb: MenuCallbacks): void {
   const wrap = document.createElement('div');
   wrap.className = 'menu';
   const toggle = document.createElement('button');
   toggle.type = 'button';
-  toggle.className = 'menu-toggle';
+  toggle.className = 'icon-btn menu-toggle';
   toggle.textContent = '⋯';
   toggle.setAttribute('aria-label', 'Menu');
   const panel = document.createElement('div');
@@ -28,6 +29,13 @@ export function mountMenu(parent: HTMLElement, cb: MenuCallbacks): void {
     msg.hidden = false;
     setTimeout(() => (msg.hidden = true), 3000);
   };
+  const close = () => (panel.hidden = true);
+
+  const personalize = item('🎨  Personalize route colours', () => {
+    close();
+    cb.onPersonalize();
+  });
+  personalize.classList.add('sheet-opener');
 
   const exportBtn = item('Export my edits', async () => {
     const overrides = cb.getOverrides();
@@ -88,7 +96,12 @@ export function mountMenu(parent: HTMLElement, cb: MenuCallbacks): void {
     say('Local edits cleared.');
   });
 
-  panel.append(exportBtn, importBtn, clearBtn, fileInput, msg);
+  const divider = document.createElement('hr');
+  divider.className = 'menu-divider';
+  const label = document.createElement('div');
+  label.className = 'menu-label';
+  label.textContent = 'My edits';
+  panel.append(personalize, divider, label, exportBtn, importBtn, clearBtn, fileInput, msg);
   toggle.addEventListener('click', (e) => {
     e.stopPropagation();
     panel.hidden = !panel.hidden;

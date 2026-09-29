@@ -18,6 +18,7 @@ PWA showing a driving loop Harare → Gonarezhou → Mozambique coast → Chimoi
 - `yarn route` — regenerate `src/data/legs.json` from seed locations via OSRM (needs network)
 - `yarn tiles` — extract basemap PMTiles for trip bbox (auto-downloads `pmtiles` binary to `.tools/`; output gitignored, ~75 MB)
 - `yarn assets` — refresh self-hosted glyphs/sprites in `public/` (committed)
+- `yarn landmarks` — regenerate `src/data/landmarks.json`: towns from our PMTiles (z12 tiles along the route) + fuel/hospital/police/ATM from Overpass within 2.5 km of the route (network). Re-run after `yarn route`.
 - `python3 scripts/terrain.py [maxzoom]` — build Terrarium DEM PMTiles for hillshade (z0-9 ≈ 31 MB; z10 ≈ 93 MB). Output gitignored, upload as Release asset `terrain-vN`, set repo variable `TERRAIN_URL`.
 
 ## Visual checks
@@ -25,7 +26,9 @@ PWA showing a driving loop Harare → Gonarezhou → Mozambique coast → Chimoi
 - `line-dasharray` is not data-driven in MapLibre: routed vs estimated legs are separate layers.
 - Route layers live in the style; `TripMap` re-adds them on every `style.load` (Light/Dark/Terrain switch uses `setStyle`).
 - Label override (`latinLabelsOnly`) must skip layers whose text-field isn't a `name` (road shields use `shield_text`), else shields render as empty ovals.
-- Layer prefs persist in localStorage `zim-moz:layers`. Terrain is optional, second file in the offline panel.
+- Display prefs (`src/prefs.ts`: flavor day/night/gray, terrain, landmarks + groups, route colours) persist in localStorage `zim-moz:prefs`. `TripMap.setPrefs` restyles only when flavor/terrain change; colours/toggles use setPaintProperty/setFilter.
+- UI pattern (Google Maps-like): ◧ button -> "Map" bottom sheet (type + details); ⋯ menu -> Personalize (route colours) + my-edits tools. Shared sheet in `ui/bottomSheet.ts`; the edit form has its own.
+- Basemap tiles (maxzoom 12) contain no fuel/POIs, hence Overpass for landmarks. Terrain is optional, second file in the offline panel.
 
 ## Layout
 - `src/data/` — seed `locations.json`, generated `legs.json`, pure modules (`merge`, `legs`, `geo`), `store` (IndexedDB)

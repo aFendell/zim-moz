@@ -3,13 +3,11 @@ import { PMTiles, Protocol, type Source } from 'pmtiles';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import type { FeatureCollection } from 'geojson';
 import type { Leg, MergedLocation } from '../data/types';
+import type { Landmark } from '../data/landmarks';
+import { landmarkGroup, landmarkLabel } from '../data/landmarks';
 import { formatKm } from '../data/legs';
-import { buildStyle, type Flavor } from './style';
-
-export interface LayerPrefs {
-  flavor: Flavor;
-  terrain: boolean;
-}
+import type { Prefs } from '../prefs';
+import { buildStyle } from './style';
 
 export interface TripMapOptions {
   container: HTMLElement;
@@ -18,12 +16,21 @@ export interface TripMapOptions {
   /** Optional PMTiles byte source for the Terrarium DEM. */
   terrain?: Source;
   baseUrl: string;
-  layers: LayerPrefs;
+  prefs: Prefs;
+  landmarks: Landmark[];
   onSelect: (id: string | null) => void;
   renderPopup: (loc: MergedLocation, legIn: Leg | undefined, legOut: Leg | undefined) => HTMLElement;
 }
 
 const ROUTE_SRC = 'route';
+const LM_SRC = 'landmarks';
+const LM_LAYERS = ['lm-circle', 'lm-label'] as const;
+
+const GROUP_COLOR: Record<string, string> = {
+  towns: '#111827',
+  fuel: '#ea580c',
+  services: '#0891b2',
+};
 
 let protocol: Protocol | null = null;
 function getProtocol(): Protocol {
@@ -41,12 +48,13 @@ export class TripMap {
   private locations: MergedLocation[] = [];
   private legs: Leg[] = [];
   private opts: TripMapOptions;
-  private layers: LayerPrefs;
+  private prefs: Prefs;
   private ready = false;
+  private clickBound = false;
 
   constructor(opts: TripMapOptions) {
     this.opts = opts;
-    this.layers = { ...opts.layers };
+    this.prefs = { ...opts.prefs };
     getProtocol().add(new PMTiles(opts.basemap));
     if (opts.terrain) getProtocol().add(new PMTiles(opts.terrain));
     this.map = new MlMap({
@@ -59,13 +67,13 @@ export class TripMap {
     this.map.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'top-right');
     this.map.on('load', () => {
       this.ready = true;
-      this.addRouteLayers();
+      this.addOverlayLayers();
       this.render(this.locations, this.legs);
     });
-    // Route layers live in the style, so re-add them after every setStyle().
+    // Overlay layers live in the style, so re-add them after every setStyle().
     this.map.on('style.load', () => {
       if (!this.ready) return;
-      this.addRouteLayers();
+      this.addOverlayLayers();
       this.setRouteData();
     });
   }
@@ -74,56 +82,125 @@ export class TripMap {
     return buildStyle({
       basemapKey: this.opts.basemap.getKey(),
       baseUrl: this.opts.baseUrl,
-      flavor: this.layers.flavor,
-      terrainKey: this.layers.terrain && this.opts.terrain ? this.opts.terrain.getKey() : undefined,
+      flavor: this.prefs.flavor,
+      terrainKey: this.prefs.terrain && this.opts.terrain ? this.opts.terrain.getKey() : undefined,
     });
   }
 
-  /** Switch light/dark and/or hillshade. Markers and popups are DOM and survive. */
-  setLayers(prefs: LayerPrefs) {
-    if (prefs.flavor === this.layers.flavor && prefs.terrain === this.layers.terrain) return;
-    this.layers = { ...prefs };
-    this.map.setStyle(this.style());
+  /** Apply display prefs. Restyles only when flavor/terrain changed; colors and toggles are cheap. */
+  setPrefs(next: Prefs) {
+    const prev = this.prefs;
+    this.prefs = { ...next };
+    if (next.flavor !== prev.flavor || next.terrain !== prev.terrain) {
+      this.map.setStyle(this.style());
+      return; // style.load re-adds overlays with the new prefs
+    }
+    if (!this.ready) return;
+    this.applyRoutePaint();
+    this.applyLandmarkFilter();
   }
 
-  private addRouteLayers() {
-    if (this.map.getSource(ROUTE_SRC)) return;
-    this.map.addSource(ROUTE_SRC, { type: 'geojson', data: emptyFC() });
-    this.map.addLayer({
-      id: 'route-casing',
-      type: 'line',
-      source: ROUTE_SRC,
-      layout: { 'line-join': 'round', 'line-cap': 'round' },
-      paint: { 'line-color': '#ffffff', 'line-width': 7, 'line-opacity': 0.9 },
-    });
-    // line-dasharray is not data-driven in MapLibre, so routed and estimated legs are separate layers.
-    this.map.addLayer({
-      id: 'route-line',
-      type: 'line',
-      source: ROUTE_SRC,
-      filter: ['==', ['get', 'source'], 'routed'],
-      layout: { 'line-join': 'round', 'line-cap': 'round' },
-      paint: { 'line-color': '#2563eb', 'line-width': 4 },
-    });
-    this.map.addLayer({
-      id: 'route-line-est',
-      type: 'line',
-      source: ROUTE_SRC,
-      filter: ['==', ['get', 'source'], 'estimated'],
-      layout: { 'line-join': 'round', 'line-cap': 'round' },
-      paint: { 'line-color': '#d97706', 'line-width': 4, 'line-dasharray': [2, 2] },
-    });
-    for (const layer of ['route-line', 'route-line-est']) {
+  private addOverlayLayers() {
+    if (!this.map.getSource(ROUTE_SRC)) {
+      this.map.addSource(ROUTE_SRC, { type: 'geojson', data: emptyFC() });
+      this.map.addLayer({
+        id: 'route-casing',
+        type: 'line',
+        source: ROUTE_SRC,
+        layout: { 'line-join': 'round', 'line-cap': 'round' },
+        paint: { 'line-color': this.prefs.routeCasing, 'line-width': 7, 'line-opacity': 0.9 },
+      });
+      // line-dasharray is not data-driven in MapLibre, so routed and estimated legs are separate layers.
+      this.map.addLayer({
+        id: 'route-line',
+        type: 'line',
+        source: ROUTE_SRC,
+        filter: ['==', ['get', 'source'], 'routed'],
+        layout: { 'line-join': 'round', 'line-cap': 'round' },
+        paint: { 'line-color': this.prefs.routeColor, 'line-width': 4 },
+      });
+      this.map.addLayer({
+        id: 'route-line-est',
+        type: 'line',
+        source: ROUTE_SRC,
+        filter: ['==', ['get', 'source'], 'estimated'],
+        layout: { 'line-join': 'round', 'line-cap': 'round' },
+        paint: { 'line-color': '#d97706', 'line-width': 4, 'line-dasharray': [2, 2] },
+      });
+    }
+    if (!this.map.getSource(LM_SRC)) {
+      this.map.addSource(LM_SRC, { type: 'geojson', data: landmarksFC(this.opts.landmarks) });
+      this.map.addLayer({
+        id: 'lm-circle',
+        type: 'circle',
+        source: LM_SRC,
+        minzoom: 6,
+        paint: {
+          'circle-radius': ['interpolate', ['linear'], ['zoom'], 6, 2.5, 10, 5, 13, 7],
+          'circle-color': ['match', ['get', 'group'], 'towns', GROUP_COLOR.towns!, 'fuel', GROUP_COLOR.fuel!, GROUP_COLOR.services!],
+          'circle-stroke-color': '#ffffff',
+          'circle-stroke-width': 1.5,
+          'circle-opacity': ['case', ['==', ['get', 'kind'], 'village'], 0.6, 0.95],
+        },
+      });
+      this.map.addLayer({
+        id: 'lm-label',
+        type: 'symbol',
+        source: LM_SRC,
+        minzoom: 8,
+        layout: {
+          'text-field': ['get', 'label'],
+          'text-font': ['Noto Sans Regular'],
+          'text-size': ['interpolate', ['linear'], ['zoom'], 8, 10, 12, 12],
+          'text-offset': [0, 1.1],
+          'text-anchor': 'top',
+          'text-optional': true,
+          'symbol-sort-key': ['get', 'rank'],
+        },
+        paint: {
+          'text-color': this.prefs.flavor === 'dark' ? '#e5e7eb' : '#1f2937',
+          'text-halo-color': this.prefs.flavor === 'dark' ? '#111827' : '#ffffff',
+          'text-halo-width': 1.2,
+        },
+      });
+    }
+    this.applyLandmarkFilter();
+    this.bindClicks();
+  }
+
+  private applyRoutePaint() {
+    if (!this.map.getLayer('route-line')) return;
+    this.map.setPaintProperty('route-line', 'line-color', this.prefs.routeColor);
+    this.map.setPaintProperty('route-casing', 'line-color', this.prefs.routeCasing);
+  }
+
+  private applyLandmarkFilter() {
+    if (!this.map.getLayer('lm-circle')) return;
+    const groups: string[] = this.prefs.landmarks ? this.prefs.landmarkGroups : [];
+    const inGroups = (): maplibregl.ExpressionSpecification => ['in', ['get', 'group'], ['literal', groups]];
+    this.map.setFilter(LM_LAYERS[0], inGroups());
+    // Basemap already labels towns; our label layer only names fuel/services.
+    this.map.setFilter(LM_LAYERS[1], ['all', inGroups(), ['!=', ['get', 'group'], 'towns']]);
+  }
+
+  private bindClicks() {
+    if (this.clickBound) return;
+    this.clickBound = true;
+    for (const layer of ['route-line', 'route-line-est', 'lm-circle', 'lm-label']) {
       this.map.on('mouseenter', layer, () => (this.map.getCanvas().style.cursor = 'pointer'));
       this.map.on('mouseleave', layer, () => (this.map.getCanvas().style.cursor = ''));
     }
-  }
-
-  private legClickBound = false;
-  private bindLegClick() {
-    if (this.legClickBound) return;
-    this.legClickBound = true;
     this.map.on('click', (e) => {
+      const lm = this.map.queryRenderedFeatures(e.point, { layers: ['lm-circle', 'lm-label'] })[0];
+      if (lm) {
+        const p = lm.properties as { label: string; kindLabel: string; km: number };
+        this.closePopup();
+        this.popup = new Popup({ closeButton: false, className: 'leg-popup', offset: 8 })
+          .setLngLat((lm.geometry as GeoJSON.Point).coordinates as [number, number])
+          .setHTML(`<strong>${escapeHtml(p.label)}</strong><br>${escapeHtml(p.kindLabel)} · km ${p.km} from Harare`)
+          .addTo(this.map);
+        return;
+      }
       const f = this.map.queryRenderedFeatures(e.point, { layers: ['route-line', 'route-line-est'] })[0];
       if (!f) return;
       const { label, distance } = f.properties as { label: string; distance: string };
@@ -159,7 +236,6 @@ export class TripMap {
     this.locations = locations;
     this.legs = legs;
     if (!this.ready) return;
-    this.bindLegClick();
     this.setRouteData();
 
     for (const m of this.markers.values()) m.remove();
@@ -221,6 +297,25 @@ export class TripMap {
     this.popup = null;
     p.remove();
   }
+}
+
+function landmarksFC(landmarks: Landmark[]): FeatureCollection {
+  return {
+    type: 'FeatureCollection',
+    features: landmarks.map((l) => ({
+      type: 'Feature',
+      properties: {
+        id: l.id,
+        label: l.name,
+        kind: l.kind,
+        kindLabel: landmarkLabel(l.kind),
+        group: landmarkGroup(l.kind),
+        km: l.km,
+        rank: l.kind === 'city' ? 0 : l.kind === 'town' ? 1 : l.kind === 'fuel' ? 2 : l.kind === 'village' ? 4 : 3,
+      },
+      geometry: { type: 'Point', coordinates: [l.lng, l.lat] },
+    })),
+  };
 }
 
 /** Sequential number among stops only (borders are unnumbered). */

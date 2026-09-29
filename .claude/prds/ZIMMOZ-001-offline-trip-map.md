@@ -59,7 +59,9 @@ A single static web app (PWA) opened from a link. On first load with wifi it cac
 - Style: a lightweight open style (e.g. Protomaps basemap style) with fonts/sprites self-hosted so nothing loads from third parties offline.
 - Route rendered as a GeoJSON line layer, one feature per leg with leg id and distance properties, so leg tap yields a popup.
 - Markers: two visual types, `stop` and `border`. Numbered in route order.
-- Layer picker: Light / Dark (same tiles, Protomaps flavor swap, dark sprites self-hosted) and an optional Terrain hillshade from a separate Terrarium DEM PMTiles (z0-9, ~31 MB, built by `scripts/terrain.py` from AWS Terrain Tiles). Terrain streams online and is a second, optional download in the offline panel. Satellite imagery is out of scope: no free offline source at usable zoom for the trip area. Preference persists in localStorage.
+- Landmarks along the route (toggle, with sub-groups Towns / Fuel / Services): generated at build time into `landmarks.json`. Towns come from the basemap tiles along the route; fuel, hospitals, police and ATMs come from OSM via Overpass within 2.5 km of the route, because the maxzoom-12 basemap carries no POIs. Each landmark records its km from the start; tapping shows name, kind and km.
+- Personalize (in the ⋯ menu): route colour and highlight/outline colour, presets plus custom picker, persisted per device.
+- Map type sheet (◧ button, Google-Maps-style bottom sheet): Day / Night / Gray (same tiles, Protomaps flavor swap, sprites self-hosted) and an optional Terrain hillshade from a separate Terrarium DEM PMTiles (z0-9, ~31 MB, built by `scripts/terrain.py` from AWS Terrain Tiles). Terrain streams online and is a second, optional download in the offline panel. Satellite imagery is out of scope: no free offline source at usable zoom for the trip area. Preference persists in localStorage.
 
 ### Stack (pending final confirmation)
 - Vanilla TypeScript + Vite + plain CSS. No React: cards are MapLibre popups and a bottom sheet, both natural in imperative DOM; React would need portals into popup elements.
