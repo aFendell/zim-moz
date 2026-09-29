@@ -9,6 +9,9 @@ export interface Prefs {
   landmarkGroups: LandmarkGroup[];
   routeColor: string;
   routeCasing: string;
+  stopColor: string;
+  borderColor: string;
+  landmarkColors: Record<LandmarkGroup, string>;
 }
 
 export const DEFAULT_PREFS: Prefs = {
@@ -18,18 +21,23 @@ export const DEFAULT_PREFS: Prefs = {
   landmarkGroups: ['towns', 'fuel'],
   routeColor: '#2563eb',
   routeCasing: '#ffffff',
+  stopColor: '#2563eb',
+  borderColor: '#7c3aed',
+  landmarkColors: { towns: '#111827', fuel: '#ea580c', services: '#0891b2' },
 };
 
-export const ROUTE_COLOR_PRESETS = ['#2563eb', '#dc2626', '#16a34a', '#7c3aed', '#ea580c', '#111827'];
-export const CASING_PRESETS = ['#ffffff', '#facc15', '#111827', '#22d3ee'];
+export const COLOR_PRESETS = ['#2563eb', '#dc2626', '#16a34a', '#7c3aed', '#ea580c', '#0891b2', '#111827', '#ffffff', '#facc15'];
 
 const KEY = 'zim-moz:prefs';
 const FLAVORS: Flavor[] = ['light', 'dark', 'grayscale'];
-const GROUPS: LandmarkGroup[] = ['towns', 'fuel', 'services'];
+export const GROUPS: LandmarkGroup[] = ['towns', 'fuel', 'services'];
 const HEX = /^#[0-9a-f]{6}$/i;
+
+const color = (v: unknown, fallback: string) => (typeof v === 'string' && HEX.test(v) ? v : fallback);
 
 export function parsePrefs(raw: unknown): Prefs {
   const p = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>;
+  const lc = (p.landmarkColors && typeof p.landmarkColors === 'object' ? p.landmarkColors : {}) as Record<string, unknown>;
   return {
     flavor: FLAVORS.includes(p.flavor as Flavor) ? (p.flavor as Flavor) : DEFAULT_PREFS.flavor,
     terrain: p.terrain === true,
@@ -37,8 +45,15 @@ export function parsePrefs(raw: unknown): Prefs {
     landmarkGroups: Array.isArray(p.landmarkGroups)
       ? GROUPS.filter((g) => (p.landmarkGroups as unknown[]).includes(g))
       : DEFAULT_PREFS.landmarkGroups,
-    routeColor: typeof p.routeColor === 'string' && HEX.test(p.routeColor) ? p.routeColor : DEFAULT_PREFS.routeColor,
-    routeCasing: typeof p.routeCasing === 'string' && HEX.test(p.routeCasing) ? p.routeCasing : DEFAULT_PREFS.routeCasing,
+    routeColor: color(p.routeColor, DEFAULT_PREFS.routeColor),
+    routeCasing: color(p.routeCasing, DEFAULT_PREFS.routeCasing),
+    stopColor: color(p.stopColor, DEFAULT_PREFS.stopColor),
+    borderColor: color(p.borderColor, DEFAULT_PREFS.borderColor),
+    landmarkColors: {
+      towns: color(lc.towns, DEFAULT_PREFS.landmarkColors.towns),
+      fuel: color(lc.fuel, DEFAULT_PREFS.landmarkColors.fuel),
+      services: color(lc.services, DEFAULT_PREFS.landmarkColors.services),
+    },
   };
 }
 
@@ -47,7 +62,7 @@ export function loadPrefs(): Prefs {
     const raw = localStorage.getItem(KEY);
     return parsePrefs(raw ? JSON.parse(raw) : null);
   } catch {
-    return { ...DEFAULT_PREFS };
+    return structuredClone(DEFAULT_PREFS);
   }
 }
 

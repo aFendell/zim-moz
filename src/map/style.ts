@@ -1,23 +1,29 @@
 import { DARK, GRAYSCALE, LIGHT, layers } from '@protomaps/basemaps';
-import type { LayerSpecification, StyleSpecification } from 'maplibre-gl';
+import type { ExpressionSpecification, LayerSpecification, StyleSpecification } from 'maplibre-gl';
 import type { Flavor } from '../prefs';
 
 export interface StyleOptions {
   basemapKey: string;
   baseUrl: string;
   flavor: Flavor;
-  /** PMTiles key of the Terrarium DEM; hillshade layer is added when set. */
+  /** PMTiles key of the Terrarium DEM. Source is always declared so toggling never reloads the style. */
   terrainKey?: string;
+  terrainVisible: boolean;
 }
 
-const FLAVORS = { light: LIGHT, dark: DARK, grayscale: GRAYSCALE } as const;
+const FLAVORS: Record<Flavor, typeof LIGHT> = { light: LIGHT, dark: DARK, grayscale: GRAYSCALE };
+const ALL_FLAVORS: Flavor[] = ['light', 'dark', 'grayscale'];
 
-/** Basemap style with all assets self-hosted under the app's base URL. */
+/**
+ * Basemap style with all assets self-hosted under the app's base URL.
+ * All three sprite sheets are declared up front and icon names are prefixed
+ * with the flavor, so switching Day/Night/Gray is a diffable change (no full reload).
+ */
 export function buildStyle(o: StyleOptions): StyleSpecification {
   // Plain string concat: `new URL()` would percent-encode the {fontstack}/{range} tokens.
   const origin = window.location.origin;
   const base = o.baseUrl.startsWith('http') ? o.baseUrl : origin + o.baseUrl;
-  let specs = latinLabelsOnly(layers('protomaps', FLAVORS[o.flavor], { lang: 'en' }));
+  let specs = prefixIcons(latinLabelsOnly(layers('protomaps', FLAVORS[o.flavor], { lang: 'en' })), o.flavor);
   const sources: StyleSpecification['sources'] = {
     protomaps: {
       type: 'vector',
@@ -34,24 +40,25 @@ export function buildStyle(o: StyleOptions): StyleSpecification {
       maxzoom: 9,
       attribution: 'Terrain: Mapzen / AWS',
     };
-    specs = withHillshade(specs, o.flavor);
+    specs = withHillshade(specs, o.flavor, o.terrainVisible);
   }
   return {
     version: 8,
     glyphs: `${base}glyphs/{fontstack}/{range}.pbf`,
-    sprite: `${base}sprites/${o.flavor}`,
+    sprite: ALL_FLAVORS.map((f) => ({ id: f, url: `${base}sprites/${f}` })),
     sources,
     layers: specs,
   };
 }
 
 /** Insert a hillshade layer just below the first water layer so lakes stay flat. */
-function withHillshade(specs: LayerSpecification[], flavor: Flavor): LayerSpecification[] {
+function withHillshade(specs: LayerSpecification[], flavor: Flavor, visible: boolean): LayerSpecification[] {
   const dark = flavor === 'dark';
   const hill: LayerSpecification = {
     id: 'hillshade',
     type: 'hillshade',
     source: 'terrain',
+    layout: { visibility: visible ? 'visible' : 'none' },
     paint: {
       'hillshade-exaggeration': dark ? 0.35 : 0.45,
       'hillshade-shadow-color': dark ? '#000000' : '#5b4a3a',
@@ -63,6 +70,57 @@ function withHillshade(specs: LayerSpecification[], flavor: Flavor): LayerSpecif
   const out = [...specs];
   out.splice(idx === -1 ? 1 : idx, 0, hill);
   return out;
+}
+
+/** With multiple sprites, icon names must be `<spriteId>:<name>`. */
+function prefixIcons(specs: LayerSpecification[], flavor: Flavor): LayerSpecification[] {
+  return specs.map((l) => {
+    if (l.type !== 'symbol' || !l.layout || !('icon-image' in l.layout)) return l;
+    const icon = l.layout['icon-image'] as string | ExpressionSpecification;
+    const prefixed = prefixExpr(icon as unknown as Expr, `${flavor}:`) as unknown as ExpressionSpecification;
+    return { ...l, layout: { ...l.layout, 'icon-image': prefixed } };
+  });
+}
+
+type Expr = string | number | boolean | null | Expr[];
+
+/**
+ * Prefix every string output of an icon expression. Zoom-driven `step` must stay top-level,
+ * so we descend into branch outputs instead of wrapping the whole thing in `concat`.
+ */
+export function prefixExpr(e: Expr, prefix: string): Expr {
+  if (typeof e === 'string') return prefix + e;
+  if (!Array.isArray(e)) return e;
+  const op = e[0];
+  const rest = e.slice(1);
+  switch (op) {
+    case 'literal':
+      return ['literal', typeof e[1] === 'string' ? prefix + e[1] : e[1]!];
+    case 'step': {
+      // ['step', input, out0, stop1, out1, stop2, out2, ...]
+      const out: Expr[] = ['step', rest[0]!, prefixExpr(rest[1]!, prefix)];
+      for (let i = 2; i < rest.length; i += 2) out.push(rest[i]!, prefixExpr(rest[i + 1]!, prefix));
+      return out;
+    }
+    case 'case': {
+      // ['case', cond1, out1, ..., default]
+      const out: Expr[] = ['case'];
+      for (let i = 0; i < rest.length - 1; i += 2) out.push(rest[i]!, prefixExpr(rest[i + 1]!, prefix));
+      out.push(prefixExpr(rest[rest.length - 1]!, prefix));
+      return out;
+    }
+    case 'match': {
+      // ['match', input, label1, out1, ..., default]
+      const out: Expr[] = ['match', rest[0]!];
+      for (let i = 1; i < rest.length - 1; i += 2) out.push(rest[i]!, prefixExpr(rest[i + 1]!, prefix));
+      out.push(prefixExpr(rest[rest.length - 1]!, prefix));
+      return out;
+    }
+    case 'coalesce':
+      return ['coalesce', ...rest.map((r) => prefixExpr(r, prefix))];
+    default:
+      return ['concat', prefix, e];
+  }
 }
 
 /**

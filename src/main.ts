@@ -20,13 +20,11 @@ import {
 import { loadPrefs, savePrefs, type Prefs } from './prefs';
 import { TripMap } from './map';
 import { CachedRangeSource } from './map/source';
-import { mountOfflinePanel } from './ui/offline';
-import { mountMapTypeButton } from './ui/mapType';
-import { openPersonalize } from './ui/personalize';
-import { closeSheet } from './ui/bottomSheet';
+import { mountOfflineChip, type OfflineFile } from './ui/offline';
+import { mountDrawer } from './ui/drawer';
+import { mountSettings } from './ui/settings';
 import { renderLocationCard } from './ui/popup';
 import { EditSheet } from './ui/sheet';
-import { mountMenu } from './ui/menu';
 import { navigate, onRouteChange } from './router';
 
 const baseUrl = import.meta.env.BASE_URL;
@@ -34,10 +32,8 @@ const app = document.getElementById('app')!;
 app.innerHTML = `
   <div id="map"></div>
   <div class="topleft"><div id="total" class="total-pill"></div><div id="offline"></div></div>
-  <div id="topright" class="topright"></div>
 `;
 const totalEl = document.getElementById('total')!;
-const topright = document.getElementById('topright')!;
 
 const store = createOverrideStore();
 let overrides: Overrides = {};
@@ -61,6 +57,10 @@ function setPrefs(next: Prefs) {
 
 const basemapUrl = new URL(BASEMAP_URL, window.location.href).toString();
 const terrainUrl = new URL(TERRAIN_URL, window.location.href).toString();
+const offlineFiles: OfflineFile[] = [
+  { id: 'basemap', label: 'Basemap', url: basemapUrl, version: BASEMAP_VERSION, sizeHintMB: BASEMAP_SIZE_MB, required: true },
+  { id: 'terrain', label: 'Terrain', url: terrainUrl, version: TERRAIN_VERSION, sizeHintMB: TERRAIN_SIZE_MB, required: false },
+];
 
 const tripMap = new TripMap({
   container: document.getElementById('map')!,
@@ -91,16 +91,13 @@ const sheet = new EditSheet(app, {
 });
 let sheetLocationId: string | null = null;
 
-mountMapTypeButton({
-  parent: topright,
-  sheetParent: app,
+const drawer = mountDrawer(app);
+mountSettings({
+  drawer,
   getPrefs: () => prefs,
   onChange: setPrefs,
   terrainReady: async () => (await getBasemapCacheState(terrainUrl, TERRAIN_VERSION)).kind === 'ready',
-});
-
-mountMenu(topright, {
-  onPersonalize: () => openPersonalize({ sheetParent: app, getPrefs: () => prefs, onChange: setPrefs }),
+  offlineFiles,
   getOverrides: () => overrides,
   onImport: async (imported) => {
     await store.replaceAll({ ...overrides, ...imported });
@@ -115,14 +112,10 @@ mountMenu(topright, {
     navigate({ locationId: null, edit: false });
   },
 });
+mountOfflineChip(document.getElementById('offline')!, offlineFiles, () => drawer.open('offline'));
 
-mountOfflinePanel({
-  parent: document.getElementById('offline')!,
-  files: [
-    { id: 'basemap', label: 'Basemap', url: basemapUrl, version: BASEMAP_VERSION, sizeHintMB: BASEMAP_SIZE_MB, required: true },
-    { id: 'terrain', label: 'Terrain', url: terrainUrl, version: TERRAIN_VERSION, sizeHintMB: TERRAIN_SIZE_MB, required: false },
-  ],
-});
+// Tapping the map closes the drawer.
+tripMap.map.on('click', () => drawer.close());
 
 // Debug handle for browser tooling; not part of the app API.
 (window as unknown as { __tripMap: TripMap }).__tripMap = tripMap;
@@ -133,7 +126,7 @@ mountOfflinePanel({
   await new Promise<void>((r) => (tripMap.map.loaded() ? r() : tripMap.map.once('load', () => r())));
   tripMap.fitAll();
   onRouteChange((route) => {
-    closeSheet();
+    drawer.close();
     if (route.edit && route.locationId) {
       const loc = locations.find((l) => l.id === route.locationId);
       if (loc) {

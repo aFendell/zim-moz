@@ -1,4 +1,5 @@
 import maplibregl, { type LngLatBoundsLike, Map as MlMap, Marker, Popup } from 'maplibre-gl';
+import type { LayerSpecification, StyleSpecification } from 'maplibre-gl';
 import { PMTiles, Protocol, type Source } from 'pmtiles';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import type { FeatureCollection } from 'geojson';
@@ -24,13 +25,6 @@ export interface TripMapOptions {
 
 const ROUTE_SRC = 'route';
 const LM_SRC = 'landmarks';
-const LM_LAYERS = ['lm-circle', 'lm-label'] as const;
-
-const GROUP_COLOR: Record<string, string> = {
-  towns: '#111827',
-  fuel: '#ea580c',
-  services: '#0891b2',
-};
 
 let protocol: Protocol | null = null;
 function getProtocol(): Protocol {
@@ -50,11 +44,12 @@ export class TripMap {
   private opts: TripMapOptions;
   private prefs: Prefs;
   private ready = false;
-  private clickBound = false;
+  private landmarksFC: FeatureCollection;
 
   constructor(opts: TripMapOptions) {
     this.opts = opts;
-    this.prefs = { ...opts.prefs };
+    this.prefs = structuredClone(opts.prefs);
+    this.landmarksFC = landmarksFC(opts.landmarks);
     getProtocol().add(new PMTiles(opts.basemap));
     if (opts.terrain) getProtocol().add(new PMTiles(opts.terrain));
     this.map = new MlMap({
@@ -67,87 +62,75 @@ export class TripMap {
     this.map.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'top-right');
     this.map.on('load', () => {
       this.ready = true;
-      this.addOverlayLayers();
+      this.bindClicks();
       this.render(this.locations, this.legs);
-    });
-    // Overlay layers live in the style, so re-add them after every setStyle().
-    this.map.on('style.load', () => {
-      if (!this.ready) return;
-      this.addOverlayLayers();
-      this.setRouteData();
     });
   }
 
-  private style() {
-    return buildStyle({
+  /** Full style: basemap + overlay sources/layers, so setStyle() can diff instead of reload. */
+  private style(): StyleSpecification {
+    const base = buildStyle({
       basemapKey: this.opts.basemap.getKey(),
       baseUrl: this.opts.baseUrl,
       flavor: this.prefs.flavor,
-      terrainKey: this.prefs.terrain && this.opts.terrain ? this.opts.terrain.getKey() : undefined,
+      terrainKey: this.opts.terrain?.getKey(),
+      terrainVisible: this.prefs.terrain,
     });
+    const sources = { ...base.sources, [ROUTE_SRC]: { type: 'geojson', data: this.routeFC() }, [LM_SRC]: { type: 'geojson', data: this.landmarksFC } } as StyleSpecification['sources'];
+    return { ...base, sources, layers: [...base.layers, ...this.overlayLayers()] };
   }
 
-  /** Apply display prefs. Restyles only when flavor/terrain changed; colors and toggles are cheap. */
-  setPrefs(next: Prefs) {
-    const prev = this.prefs;
-    this.prefs = { ...next };
-    if (next.flavor !== prev.flavor || next.terrain !== prev.terrain) {
-      this.map.setStyle(this.style());
-      return; // style.load re-adds overlays with the new prefs
-    }
-    if (!this.ready) return;
-    this.applyRoutePaint();
-    this.applyLandmarkFilter();
-  }
-
-  private addOverlayLayers() {
-    if (!this.map.getSource(ROUTE_SRC)) {
-      this.map.addSource(ROUTE_SRC, { type: 'geojson', data: emptyFC() });
-      this.map.addLayer({
+  private overlayLayers(): LayerSpecification[] {
+    const p = this.prefs;
+    const groups: string[] = p.landmarks ? p.landmarkGroups : [];
+    const inGroups: maplibregl.ExpressionSpecification = ['in', ['get', 'group'], ['literal', groups]];
+    const dark = p.flavor === 'dark';
+    return [
+      {
         id: 'route-casing',
         type: 'line',
         source: ROUTE_SRC,
         layout: { 'line-join': 'round', 'line-cap': 'round' },
-        paint: { 'line-color': this.prefs.routeCasing, 'line-width': 7, 'line-opacity': 0.9 },
-      });
+        paint: { 'line-color': p.routeCasing, 'line-width': 7, 'line-opacity': 0.9 },
+      },
       // line-dasharray is not data-driven in MapLibre, so routed and estimated legs are separate layers.
-      this.map.addLayer({
+      {
         id: 'route-line',
         type: 'line',
         source: ROUTE_SRC,
         filter: ['==', ['get', 'source'], 'routed'],
         layout: { 'line-join': 'round', 'line-cap': 'round' },
-        paint: { 'line-color': this.prefs.routeColor, 'line-width': 4 },
-      });
-      this.map.addLayer({
+        paint: { 'line-color': p.routeColor, 'line-width': 4 },
+      },
+      {
         id: 'route-line-est',
         type: 'line',
         source: ROUTE_SRC,
         filter: ['==', ['get', 'source'], 'estimated'],
         layout: { 'line-join': 'round', 'line-cap': 'round' },
         paint: { 'line-color': '#d97706', 'line-width': 4, 'line-dasharray': [2, 2] },
-      });
-    }
-    if (!this.map.getSource(LM_SRC)) {
-      this.map.addSource(LM_SRC, { type: 'geojson', data: landmarksFC(this.opts.landmarks) });
-      this.map.addLayer({
+      },
+      {
         id: 'lm-circle',
         type: 'circle',
         source: LM_SRC,
         minzoom: 6,
+        filter: inGroups,
         paint: {
           'circle-radius': ['interpolate', ['linear'], ['zoom'], 6, 2.5, 10, 5, 13, 7],
-          'circle-color': ['match', ['get', 'group'], 'towns', GROUP_COLOR.towns!, 'fuel', GROUP_COLOR.fuel!, GROUP_COLOR.services!],
+          'circle-color': ['match', ['get', 'group'], 'towns', p.landmarkColors.towns, 'fuel', p.landmarkColors.fuel, p.landmarkColors.services],
           'circle-stroke-color': '#ffffff',
           'circle-stroke-width': 1.5,
           'circle-opacity': ['case', ['==', ['get', 'kind'], 'village'], 0.6, 0.95],
         },
-      });
-      this.map.addLayer({
+      },
+      {
         id: 'lm-label',
         type: 'symbol',
         source: LM_SRC,
         minzoom: 8,
+        // Basemap already labels towns; only name fuel/services.
+        filter: ['all', inGroups, ['!=', ['get', 'group'], 'towns']],
         layout: {
           'text-field': ['get', 'label'],
           'text-font': ['Noto Sans Regular'],
@@ -158,34 +141,28 @@ export class TripMap {
           'symbol-sort-key': ['get', 'rank'],
         },
         paint: {
-          'text-color': this.prefs.flavor === 'dark' ? '#e5e7eb' : '#1f2937',
-          'text-halo-color': this.prefs.flavor === 'dark' ? '#111827' : '#ffffff',
+          'text-color': dark ? '#e5e7eb' : '#1f2937',
+          'text-halo-color': dark ? '#111827' : '#ffffff',
           'text-halo-width': 1.2,
         },
-      });
-    }
-    this.applyLandmarkFilter();
-    this.bindClicks();
+      },
+    ];
   }
 
-  private applyRoutePaint() {
-    if (!this.map.getLayer('route-line')) return;
-    this.map.setPaintProperty('route-line', 'line-color', this.prefs.routeColor);
-    this.map.setPaintProperty('route-casing', 'line-color', this.prefs.routeCasing);
+  /** Apply display prefs via a diffed setStyle (no flicker) plus marker colours. */
+  setPrefs(next: Prefs) {
+    this.prefs = structuredClone(next);
+    if (!this.ready) return;
+    this.map.setStyle(this.style(), { diff: true });
+    this.applyMarkerColors();
   }
 
-  private applyLandmarkFilter() {
-    if (!this.map.getLayer('lm-circle')) return;
-    const groups: string[] = this.prefs.landmarks ? this.prefs.landmarkGroups : [];
-    const inGroups = (): maplibregl.ExpressionSpecification => ['in', ['get', 'group'], ['literal', groups]];
-    this.map.setFilter(LM_LAYERS[0], inGroups());
-    // Basemap already labels towns; our label layer only names fuel/services.
-    this.map.setFilter(LM_LAYERS[1], ['all', inGroups(), ['!=', ['get', 'group'], 'towns']]);
+  private applyMarkerColors() {
+    this.opts.container.style.setProperty('--stop-color', this.prefs.stopColor);
+    this.opts.container.style.setProperty('--border-color', this.prefs.borderColor);
   }
 
   private bindClicks() {
-    if (this.clickBound) return;
-    this.clickBound = true;
     for (const layer of ['route-line', 'route-line-est', 'lm-circle', 'lm-label']) {
       this.map.on('mouseenter', layer, () => (this.map.getCanvas().style.cursor = 'pointer'));
       this.map.on('mouseleave', layer, () => (this.map.getCanvas().style.cursor = ''));
@@ -212,11 +189,9 @@ export class TripMap {
     });
   }
 
-  private setRouteData() {
-    const src = this.map.getSource(ROUTE_SRC) as maplibregl.GeoJSONSource | undefined;
-    if (!src) return;
+  private routeFC(): FeatureCollection {
     const byId = new Map(this.locations.map((l) => [l.id, l]));
-    src.setData({
+    return {
       type: 'FeatureCollection',
       features: this.legs.map((leg) => ({
         type: 'Feature',
@@ -228,7 +203,7 @@ export class TripMap {
         },
         geometry: { type: 'LineString', coordinates: leg.geometry },
       })),
-    });
+    };
   }
 
   /** Replace all data. Safe to call before map load. */
@@ -236,7 +211,8 @@ export class TripMap {
     this.locations = locations;
     this.legs = legs;
     if (!this.ready) return;
-    this.setRouteData();
+    (this.map.getSource(ROUTE_SRC) as maplibregl.GeoJSONSource | undefined)?.setData(this.routeFC());
+    this.applyMarkerColors();
 
     for (const m of this.markers.values()) m.remove();
     this.markers.clear();
@@ -323,10 +299,6 @@ function stopNumber(locations: MergedLocation[], index: number): number {
   let n = 0;
   for (let i = 0; i <= index; i++) if (locations[i]!.type === 'stop') n++;
   return n;
-}
-
-function emptyFC(): FeatureCollection {
-  return { type: 'FeatureCollection', features: [] };
 }
 
 export function escapeHtml(s: string): string {
