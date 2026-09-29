@@ -25,6 +25,7 @@ export interface TripMapOptions {
 
 const ROUTE_SRC = 'route';
 const LM_SRC = 'landmarks';
+const LOCATE_KEY = 'zim-moz:locate';
 
 let protocol: Protocol | null = null;
 function getProtocol(): Protocol {
@@ -76,11 +77,30 @@ export class TripMap {
     this.map.addControl(geo, 'top-right');
     geo.on('geolocate', (e: GeolocationPosition) => {
       this.userPos = { lat: e.coords.latitude, lng: e.coords.longitude };
+      try {
+        localStorage.setItem(LOCATE_KEY, '1');
+      } catch {
+        /* ignore */
+      }
       // Refresh an open stop card so it shows distance from here.
       if (this.popup && this.selectedId) this.select(this.selectedId);
     });
-    geo.on('trackuserlocationend', () => {
-      /* keep last fix; card keeps showing distance */
+    geo.on('error', () => {
+      try {
+        localStorage.removeItem(LOCATE_KEY);
+      } catch {
+        /* ignore */
+      }
+    });
+    // Re-enable tracking on launch if the user turned it on before (permission already granted).
+    this.map.once('load', () => {
+      let wanted = false;
+      try {
+        wanted = localStorage.getItem(LOCATE_KEY) === '1';
+      } catch {
+        /* ignore */
+      }
+      if (wanted) geo.trigger();
     });
     this.map.on('load', () => {
       this.ready = true;
