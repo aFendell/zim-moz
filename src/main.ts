@@ -6,6 +6,7 @@ import type { Leg, Location, MergedLocation, Overrides, PrecomputedLeg } from '.
 import type { Landmark } from './data/landmarks';
 import { mergeLocations } from './data/merge';
 import { buildLegs, formatKm, totalKm } from './data/legs';
+import { haversineKm } from './data/geo';
 import { createOverrideStore } from './data/store';
 import { getBasemapCacheState } from './data/basemapCache';
 import {
@@ -62,7 +63,7 @@ const offlineFiles: OfflineFile[] = [
   { id: 'terrain', label: 'Terrain', url: terrainUrl, version: TERRAIN_VERSION, sizeHintMB: TERRAIN_SIZE_MB, required: false },
 ];
 
-const tripMap = new TripMap({
+const tripMap: TripMap = new TripMap({
   container: document.getElementById('map')!,
   basemap: new CachedRangeSource(basemapUrl, BASEMAP_VERSION),
   terrain: new CachedRangeSource(terrainUrl, TERRAIN_VERSION),
@@ -70,8 +71,11 @@ const tripMap = new TripMap({
   prefs,
   landmarks: landmarks as Landmark[],
   onSelect: (id) => navigate({ locationId: id, edit: false }),
-  renderPopup: (loc, legIn, legOut) =>
-    renderLocationCard(loc, legIn, legOut, baseUrl, (id) => navigate({ locationId: id, edit: true })),
+  renderPopup: (loc, legIn, legOut) => {
+    const me = tripMap.getUserPosition();
+    const fromYou = me ? haversineKm(me, loc) : undefined;
+    return renderLocationCard(loc, legIn, legOut, baseUrl, (id) => navigate({ locationId: id, edit: true }), fromYou);
+  },
 });
 
 const sheet = new EditSheet(app, {

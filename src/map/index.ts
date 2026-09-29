@@ -45,6 +45,13 @@ export class TripMap {
   private prefs: Prefs;
   private ready = false;
   private landmarksFC: FeatureCollection;
+  private userPos: { lat: number; lng: number } | null = null;
+  private selectedId: string | null = null;
+
+  /** Last GPS fix, if the user enabled location. */
+  getUserPosition() {
+    return this.userPos;
+  }
 
   constructor(opts: TripMapOptions) {
     this.opts = opts;
@@ -60,6 +67,21 @@ export class TripMap {
       attributionControl: { compact: true },
     });
     this.map.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'top-right');
+    const geo = new maplibregl.GeolocateControl({
+      positionOptions: { enableHighAccuracy: true, maximumAge: 10_000, timeout: 15_000 },
+      trackUserLocation: true,
+      showUserLocation: true,
+      showAccuracyCircle: true,
+    });
+    this.map.addControl(geo, 'top-right');
+    geo.on('geolocate', (e: GeolocationPosition) => {
+      this.userPos = { lat: e.coords.latitude, lng: e.coords.longitude };
+      // Refresh an open stop card so it shows distance from here.
+      if (this.popup && this.selectedId) this.select(this.selectedId);
+    });
+    geo.on('trackuserlocationend', () => {
+      /* keep last fix; card keeps showing distance */
+    });
     this.map.on('load', () => {
       this.ready = true;
       this.bindClicks();
@@ -243,6 +265,7 @@ export class TripMap {
   /** Open popup for a location id (null closes). Flies to it if not in view. */
   select(id: string | null) {
     this.closePopup();
+    this.selectedId = id;
     if (!id) return;
     const loc = this.locations.find((l) => l.id === id);
     if (!loc) return;
@@ -260,6 +283,7 @@ export class TripMap {
       .addTo(this.map);
     this.popup.on('close', () => {
       this.popup = null;
+      this.selectedId = null;
       this.opts.onSelect(null);
     });
     if (!this.map.getBounds().contains([loc.lng, loc.lat])) {

@@ -163,6 +163,10 @@ body,
   font-size: 13px;
   color: var(--muted);
 }
+.card-from-you {
+  color: var(--blue);
+  font-weight: 600;
+}
 .card-desc,
 .card-notes {
   margin: 8px 12px;

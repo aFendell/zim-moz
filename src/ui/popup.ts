@@ -18,6 +18,8 @@ export function renderLocationCard(
   legOut: Leg | undefined,
   baseUrl: string,
   onEdit: (id: string) => void,
+  /** Straight-line km from the user's last GPS fix, if any. */
+  fromYouKm?: number,
 ): HTMLElement {
   const card = el('div', 'card');
   if (loc.image) {
@@ -35,7 +37,8 @@ export function renderLocationCard(
   const dist = el('div', 'card-dist');
   if (legIn) dist.appendChild(el('span', undefined, `↦ from previous: ${formatKm(legIn.distanceKm, legIn.source)}`));
   if (legOut) dist.appendChild(el('span', undefined, `↦ to next: ${formatKm(legOut.distanceKm, legOut.source)}`));
-  if (legIn || legOut) card.appendChild(dist);
+  if (fromYouKm !== undefined) dist.appendChild(el('span', 'card-from-you', `📍 ${Math.round(fromYouKm)} km from you (straight line)`));
+  if (legIn || legOut || fromYouKm !== undefined) card.appendChild(dist);
 
   if (loc.description) card.appendChild(el('p', 'card-desc', loc.description));
   if (loc.type === 'border') {
